@@ -2,18 +2,6 @@
 import type { LngLat } from './geo';
 import type { RouteStats, Segment } from './types';
 
-// openrouteservice codes, see https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/extra-info/
-export const WAYTYPE = {
-  stateRoad: 1, // main roads (primary/trunk)
-  road: 2, // secondary/tertiary roads
-  street: 3,
-  path: 4,
-  track: 5,
-  cycleway: 6,
-  footway: 7,
-  steps: 8,
-} as const;
-const UNPAVED_SURFACES = new Set([2, 8, 9, 10, 11, 12, 15, 16, 17]);
 
 const same = (a: LngLat, b: LngLat) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
 
@@ -47,9 +35,9 @@ export function measure(segments: Segment[]): RouteStats {
 
   for (const s of segments) {
     length += s.length;
-    if (s.waytype === WAYTYPE.stateRoad) busy += s.length;
-    else if (s.waytype === WAYTYPE.road) busy += s.length * 0.5;
-    if (UNPAVED_SURFACES.has(s.surface)) unpaved += s.length;
+    if (s.road === 'main') busy += s.length;
+    else if (s.road === 'secondary') busy += s.length * 0.5;
+    if (s.unpaved) unpaved += s.length;
     const k = segmentKey(s);
     const n = seen.get(k) ?? 0;
     if (n > 0) repeated += s.length;

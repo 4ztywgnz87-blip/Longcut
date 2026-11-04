@@ -2,11 +2,11 @@
 // Usage: ORS_KEY=... npx tsx scripts/eval.ts [filter]
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { BRouterRouter } from '../src/core/brouter';
 import { OrsRouter } from '../src/core/ors';
 import type { ResponseCache } from '../src/core/ors';
 import { planRoutes } from '../src/core/planner';
 import type { LngLat } from '../src/core/geo';
-import type { RouteOptions } from '../src/core/types';
 
 const HOME = 'Nieuwkerken-Waas';
 // [start, end, km]. Same start and end = loop.
@@ -84,11 +84,13 @@ async function geocode(q: string): Promise<LngLat> {
 
 async function main() {
   (globalThis as { LONGCUT_DEBUG?: boolean }).LONGCUT_DEBUG = !!process.env.LONGCUT_DEBUG;
-  const key = process.env.ORS_KEY;
-  if (!key) throw new Error('Set ORS_KEY');
   const filter = process.argv[2];
-  const profile = (process.env.PROFILE ?? 'foot-walking') as RouteOptions['profile'];
-  const router = new OrsRouter({ apiKey: key, cache: diskCache });
+  const engine = process.env.ROUTER ?? 'brouter';
+  const router =
+    engine === 'ors'
+      ? new OrsRouter({ apiKey: process.env.ORS_KEY ?? '', cache: diskCache })
+      : new BRouterRouter({ profileText: await readFile('brouter/longcut-run.brf', 'utf8'), cache: diskCache, maxConcurrent: 2, minIntervalMs: 700 });
+  const prefs = { unpavedOk: !!process.env.UNPAVED_OK, preferGreen: !!process.env.GREEN };
   await mkdir(OUT, { recursive: true });
 
   const cases = CASES.map(([from, to, km], i) => ({ id: i + 1, from, to, km })).filter(
@@ -101,10 +103,10 @@ async function main() {
     const end = await geocode(c.to);
     const before = router.requestCount;
     const t0 = Date.now();
-    const result = await planRoutes({ start, end, distanceKm: c.km, prefs: { unpavedOk: false } }, router, { profile });
+    const result = await planRoutes({ start, end, distanceKm: c.km, prefs }, router);
     const seconds = (Date.now() - t0) / 1000;
     const requests = router.requestCount - before;
-    results.push({ ...c, start, end, profile, seconds, requests, result });
+    results.push({ ...c, start, end, engine, prefs, seconds, requests, result });
 
     const line = result.ok
       ? result.routes

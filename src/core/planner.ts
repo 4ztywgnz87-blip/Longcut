@@ -183,7 +183,7 @@ async function fitTemplate(
 export async function planRoutes(
   req: PlanRequest,
   router: Router,
-  ro: RouteOptions = { profile: 'foot-walking' },
+  ro: RouteOptions = req.prefs,
 ): Promise<PlanResult> {
   const target = req.distanceKm * 1000;
   const crow = haversine(req.start, req.end);
@@ -249,7 +249,7 @@ function toCandidate(segments: Segment[], target: number, req: PlanRequest, labe
   const route: PlannedRoute = {
     coords: segments.length ? [segments[0].from, ...segments.map((s) => s.to)] : [],
     elevations: segments.length ? [segments[0].ele, ...segments.map((s) => s.ele)] : [],
-    waytypes: segments.map((s) => s.waytype),
+    roads: segments.map((s) => s.road),
     stats,
     score,
     deviation: dev,

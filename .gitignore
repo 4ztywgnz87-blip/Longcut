@@ -27,3 +27,4 @@ dist-ssr
 .cache
 eval/out
 .env
+eval-run.log

@@ -2,7 +2,7 @@
 import type { LngLat } from './geo';
 import { haversine } from './geo';
 import { RouterError } from './types';
-import type { RawRoute, RouteOptions, Router, Segment } from './types';
+import type { RawRoute, RoadKind, RouteOptions, Router, Segment } from './types';
 
 export interface ResponseCache {
   get(key: string): Promise<unknown | undefined>;
@@ -62,8 +62,9 @@ export class OrsRouter implements Router {
       extra_info: ['waytype', 'surface'],
       options: { avoid_features: ['ferries', 'fords'] },
     };
-    const url = `${this.opts.baseUrl ?? 'https://api.openrouteservice.org'}/v2/directions/${ro.profile}/geojson`;
-    const key = `${ro.profile}|${JSON.stringify(body)}`;
+    const profile = ro.unpavedOk ? 'foot-hiking' : 'foot-walking';
+    const url = `${this.opts.baseUrl ?? 'https://api.openrouteservice.org'}/v2/directions/${profile}/geojson`;
+    const key = `${profile}|${JSON.stringify(body)}`;
 
     let json = (await this.opts.cache?.get(key)) as OrsResponse | undefined;
     if (!json) {
@@ -115,6 +116,12 @@ interface OrsResponse {
   }[];
 }
 
+// openrouteservice codes: https://giscience.github.io/openrouteservice/api-reference/endpoints/directions/extra-info/
+const ORS_ROADS: Record<number, RoadKind> = {
+  1: 'main', 2: 'secondary', 3: 'street', 4: 'path', 5: 'track', 6: 'cycleway', 7: 'footway', 8: 'steps',
+};
+const ORS_UNPAVED = new Set([2, 8, 9, 10, 11, 12, 15, 16, 17]);
+
 /** Turn the API response into a list of segments with road type and surface attached. */
 export function toRawRoute(json: OrsResponse): RawRoute {
   const f = json.features[0];
@@ -137,8 +144,8 @@ export function toRawRoute(json: OrsResponse): RawRoute {
       to: b,
       ele: pts[i + 1].length > 2 ? pts[i + 1][2] : null,
       length: haversine(a, b),
-      waytype: waytype[i],
-      surface: surface[i],
+      road: ORS_ROADS[waytype[i]] ?? 'unknown',
+      unpaved: ORS_UNPAVED.has(surface[i]),
     });
   }
   return { segments, waypointSegIndex: f.properties.way_points };

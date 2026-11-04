@@ -1,13 +1,25 @@
 import type { LngLat } from './geo';
 
+/** Kind of road, from busiest to quietest. */
+export type RoadKind =
+  | 'main' // primary/trunk: busy
+  | 'secondary' // secondary/tertiary: can be busy
+  | 'street' // residential, service, unclassified
+  | 'cycleway'
+  | 'footway' // footway, pedestrian
+  | 'path'
+  | 'track' // farm and forest tracks
+  | 'steps'
+  | 'unknown';
+
 /** One piece of a route between two consecutive geometry points. */
 export interface Segment {
   from: LngLat;
   to: LngLat;
   ele: number | null; // elevation at `to`, if known
   length: number; // meters
-  waytype: number; // openrouteservice waytype code, -1 if unknown
-  surface: number; // openrouteservice surface code, -1 if unknown
+  road: RoadKind;
+  unpaved: boolean;
 }
 
 /** A route as returned by a router, already split into segments. */
@@ -18,7 +30,8 @@ export interface RawRoute {
 }
 
 export interface RouteOptions {
-  profile: 'foot-walking' | 'foot-hiking';
+  unpavedOk: boolean;
+  preferGreen: boolean;
 }
 
 export interface Router {
@@ -34,10 +47,7 @@ export class RouterError extends Error {
   }
 }
 
-export interface PlanPrefs {
-  /** Unpaved paths are fine (otherwise mildly avoided). */
-  unpavedOk: boolean;
-}
+export type PlanPrefs = RouteOptions;
 
 export interface PlanRequest {
   start: LngLat;
@@ -57,8 +67,8 @@ export interface RouteStats {
 export interface PlannedRoute {
   coords: LngLat[];
   elevations: (number | null)[];
-  /** Road type per piece of the route (between coords[i] and coords[i+1]). */
-  waytypes: number[];
+  /** Road kind per piece of the route (between coords[i] and coords[i+1]). */
+  roads: RoadKind[];
   stats: RouteStats;
   score: number; // lower is better
   /** Distance deviation from the requested distance, as a fraction (+0.02 = 2% longer). */

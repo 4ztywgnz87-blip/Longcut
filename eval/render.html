@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css">
+<style>html,body,#map{margin:0;width:100%;height:100%;background:#121214}</style>
+</head>
+<body>
+<div id="map"></div>
+<script type="module">
+import maplibregl from '/node_modules/maplibre-gl/dist/maplibre-gl.mjs';
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/dark',
+  center: [4.18, 51.19],
+  zoom: 11,
+  attributionControl: false,
+  fadeDuration: 0,
+  canvasContextAttributes: { preserveDrawingBuffer: true },
+});
+const COLORS = ['#D7FF3A', '#6EC8FF', '#FF8FD8'];
+const empty = { type: 'FeatureCollection', features: [] };
+
+map.on('load', () => {
+  for (let i = 2; i >= 0; i--) {
+    map.addSource(`r${i}`, { type: 'geojson', data: empty });
+    map.addLayer({ id: `r${i}-casing`, type: 'line', source: `r${i}`, paint: { 'line-color': '#000', 'line-width': i ? 5 : 7, 'line-opacity': 0.6 }, layout: { 'line-join': 'round', 'line-cap': 'round' } });
+    map.addLayer({ id: `r${i}`, type: 'line', source: `r${i}`, paint: { 'line-color': COLORS[i], 'line-width': i ? 2.5 : 4, 'line-opacity': i ? 0.85 : 1 }, layout: { 'line-join': 'round', 'line-cap': 'round' } });
+  }
+  map.addSource('busy', { type: 'geojson', data: empty });
+  map.addLayer({ id: 'busy', type: 'line', source: 'busy', paint: { 'line-color': ['match', ['get', 'w'], 1, '#FF3B3B', '#FF9A3B'], 'line-width': 4 }, layout: { 'line-cap': 'round' } });
+  map.addSource('pts', { type: 'geojson', data: empty });
+  map.addLayer({ id: 'pts', type: 'circle', source: 'pts', paint: { 'circle-radius': 8, 'circle-color': ['match', ['get', 'k'], 'start', '#FFFFFF', '#121214'], 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 3 } });
+  window.mapReady = true;
+});
+
+// routes: [{coords, waytypes}], best first
+window.show = (routes, start, end) => new Promise((resolve) => {
+  for (let i = 0; i < 3; i++) {
+    const r = routes[i];
+    map.getSource(`r${i}`).setData(r ? { type: 'Feature', geometry: { type: 'LineString', coordinates: r.coords } } : empty);
+  }
+  const busy = [];
+  if (routes[0]) {
+    const { coords, roads } = routes[0];
+    roads.forEach((road, i) => {
+      const w = road === 'main' ? 1 : road === 'secondary' ? 2 : 0;
+      if (w) busy.push({ type: 'Feature', properties: { w }, geometry: { type: 'LineString', coordinates: [coords[i], coords[i + 1]] } });
+    });
+  }
+  map.getSource('busy').setData({ type: 'FeatureCollection', features: busy });
+  map.getSource('pts').setData({ type: 'FeatureCollection', features: [
+    { type: 'Feature', properties: { k: 'end' }, geometry: { type: 'Point', coordinates: end } },
+    { type: 'Feature', properties: { k: 'start' }, geometry: { type: 'Point', coordinates: start } },
+  ] });
+  const all = routes.flatMap((r) => r.coords).concat([start, end]);
+  const b = new maplibregl.LngLatBounds(all[0], all[0]);
+  all.forEach((c) => b.extend(c));
+  map.fitBounds(b, { padding: 40, duration: 0 });
+  map.once('idle', () => resolve(true));
+});
+</script>
+</body>
+</html>

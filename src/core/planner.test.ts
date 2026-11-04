@@ -3,7 +3,7 @@ import { haversine } from './geo';
 import type { LngLat } from './geo';
 import { measure, removeSpurs } from './analyze';
 import { planRoutes } from './planner';
-import type { RawRoute, Router, Segment } from './types';
+import type { RawRoute, RoadKind, Router, Segment } from './types';
 
 /** Fake router: straight lines between points, but 25% longer (like winding roads). */
 class FakeRouter implements Router {
@@ -18,7 +18,7 @@ class FakeRouter implements Router {
       for (let k = 0; k < steps; k++) {
         const p = (t: number): LngLat => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         const from = p(k / steps), to = p((k + 1) / steps);
-        segments.push({ from, to, ele: 10, length: haversine(from, to) * 1.25, waytype: 3, surface: 3 });
+        segments.push({ from, to, ele: 10, length: haversine(from, to) * 1.25, road: 'street', unpaved: false });
       }
       waypointSegIndex.push(segments.length);
     }
@@ -28,10 +28,10 @@ class FakeRouter implements Router {
 
 const home: LngLat = [4.1937, 51.1878];
 const parents: LngLat = [4.143, 51.1655]; // ~4.5 km straight line
-const prefs = { unpavedOk: false };
+const prefs = { unpavedOk: false, preferGreen: false };
 
-const seg = (from: LngLat, to: LngLat, waytype = 3): Segment => ({
-  from, to, ele: null, length: haversine(from, to), waytype, surface: 3,
+const seg = (from: LngLat, to: LngLat, road: RoadKind = 'street'): Segment => ({
+  from, to, ele: null, length: haversine(from, to), road, unpaved: false,
 });
 
 describe('removeSpurs', () => {
@@ -51,7 +51,7 @@ describe('measure', () => {
   it('counts road run twice as overlap, and main roads as busy', () => {
     const a: LngLat = [4, 51], b: LngLat = [4.01, 51], c: LngLat = [4.01, 51.01];
     // a→b on a main road, b→c, c→b (repeat), b→a (repeat on main road)
-    const s = measure([seg(a, b, 1), seg(b, c), seg(c, b), seg(b, a, 1)]);
+    const s = measure([seg(a, b, 'main'), seg(b, c), seg(c, b), seg(b, a, 'main')]);
     expect(s.overlapShare).toBeCloseTo(0.5, 2);
     const ab = haversine(a, b), bc = haversine(b, c);
     expect(s.busyShare).toBeCloseTo(ab / (ab + bc), 3);
