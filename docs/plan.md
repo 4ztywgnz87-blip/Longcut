@@ -69,13 +69,13 @@ Navigatie onderweg, accounts, advertenties, delen op sociale media, gamification
 |---|---|---|
 | Soort app | **Webapp die je kan installeren (PWA)** | Eén app voor iPhone, Android en pc. Geen App Store en geen Apple-account van €99 per jaar nodig. Op de iPhone: Safari → Deel → *Zet op beginscherm*. Dan opent hij schermvullend met een eigen icoon. |
 | Kaartdata | **OpenStreetMap** | Dezelfde bron als Komoot. In België zeer volledig, inclusief trage wegen, veldwegen en bospaden. In landelijk gebied vaak beter dan Google. |
-| Routeberekening | **openrouteservice** (gratis, gratis API-sleutel), met de looproute-instelling die rustige en groene wegen verkiest | Gratis tot 2.000 berekeningen per dag. Eén LONGCUT-route kost er ongeveer 10–30, dus genoeg voor ~70+ routes per dag. |
+| Routeberekening | **BRouter** (brouter.de, gratis, geen sleutel) met een eigen LONGCUT-loopprofiel (`brouter/longcut-run.brf`) | Geen daglimiet. Het profiel mijdt drukke wegen sterk (op basis van wegtype én geschat verkeer) en kan groen en onverhard bevoordelen. *Gewijzigd op 4/11: openrouteservice gaf maar 200 berekeningen/dag (±10 routes) en heeft in België geen data voor rustige/groene wegen. Blijft als reserve in de code.* |
 | Adres zoeken | Gratis zoekdienst op basis van OpenStreetMap | Geen kosten |
 | Hosting | **GitHub Pages** (gratis) | De code staat op je GitHub, de app krijgt een vast webadres |
 | Code | TypeScript + React + MapLibre (kaart) | Goed onderhoudbaar en veel gebruikt. Ik schrijf het leesbaar, met korte uitleg. |
 | Opslag | Op je toestel zelf | Geen account of server nodig |
 
-**Totale kost: €0.** Je moet alleen zelf een gratis account aanmaken op openrouteservice.org voor de API-sleutel (2 minuten werk).
+**Totale kost: €0.** BRouter is een publieke, vrijwillig gerunde server. Wordt die ooit te traag of onbeschikbaar, dan kunnen we BRouter zelf hosten (open source).
 
 ### Hoe de "omweg" berekend wordt (het hart van de app)
 
@@ -132,4 +132,4 @@ Ik test elke fase zelf grondig voor ik ze toon. Na elke fase krijg je een tussen
 ## 10. Nog open
 
 - **Accentkleur:** twijfel bij volt-geel. Kandidaten: volt `#D7FF3A`, signaaloranje `#FF5B1F`, elektrisch blauw `#3D7BFF`, mint `#2EF2A6`, koraalrood `#FF3D5A`. Kiezen ten laatste in fase 3, met een voorbeeld naast elkaar.
-- **Te doen door Dauwe vóór fase 0/1:** openrouteservice-sleutel, lege GitHub-repo `longcut` + Claude-toegang, netwerktoegang van de cloudomgeving.
+- ~~Te doen door Dauwe vóór fase 0/1~~: klaar.
