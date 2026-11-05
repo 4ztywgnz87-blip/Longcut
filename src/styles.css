@@ -113,10 +113,9 @@ button:disabled { opacity: 0.35; cursor: default; }
   max-height: 72%;
   overflow-y: auto;
   padding: 14px var(--gutter-r) max(10px, env(safe-area-inset-bottom, 0px)) var(--gutter-l);
-  background: var(--bg);
   border-top: 1px solid var(--line);
   border-radius: 20px 20px 0 0;
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.35);
 }
 @media (min-width: 900px) {
   .sheet {
@@ -388,4 +387,23 @@ button:disabled { opacity: 0.35; cursor: default; }
   .stats dd { font-size: 19px; }
   .spark svg { height: 22px; }
   .row-3 .btn, .row-2 .btn { min-height: 44px; }
+}
+
+/* Glass: the panel, logo and map buttons let the map show through, blurred,
+   like Liquid Glass on iPhone. Inner surfaces become light tints of the glass. */
+.sheet, .brand, .pill-btn, .locate-btn {
+  background: rgba(17, 17, 19, 0.62);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.sheet {
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --line: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 -12px 40px rgba(0, 0, 0, 0.35);
+}
+/* Fallback for browsers without blur: keep text readable */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sheet, .brand, .pill-btn, .locate-btn { background: rgba(17, 17, 19, 0.92); }
 }
