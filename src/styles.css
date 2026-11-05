@@ -392,7 +392,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 /* Glass: the panel, logo and map buttons let the map show through, blurred,
    like Liquid Glass on iPhone. Inner surfaces become light tints of the glass. */
 .sheet, .brand, .pill-btn, .locate-btn {
-  background: rgba(17, 17, 19, 0.62);
+  background: rgba(17, 17, 19, 0.45);
   -webkit-backdrop-filter: blur(22px) saturate(170%);
   backdrop-filter: blur(22px) saturate(170%);
   border-color: rgba(255, 255, 255, 0.12);
