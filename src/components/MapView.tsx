@@ -28,10 +28,7 @@ interface Props {
   me?: { coord: LngLat; accuracy: number } | null;
 }
 
-const styleUrl = () =>
-  matchMedia('(prefers-color-scheme: light)').matches
-    ? 'https://tiles.openfreemap.org/styles/positron'
-    : 'https://tiles.openfreemap.org/styles/dark';
+const STYLE = 'https://tiles.openfreemap.org/styles/dark';
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const HOME: LngLat = [4.18, 51.19]; // Waasland
 
@@ -54,7 +51,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     if (!el.current) return;
     const map = new maplibregl.Map({
       container: el.current,
-      style: styleUrl(),
+      style: STYLE,
       center: start ?? HOME,
       zoom: 11.5,
       attributionControl: { compact: true },
@@ -64,7 +61,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     map.touchZoomRotate.disableRotation();
     mapRef.current = map;
 
-    // tapping an alternative selects it (layer listeners survive a style change)
+    // tapping an alternative selects it
     map.on('click', 'alt', (e) => {
       const i = e.features?.[0]?.properties?.i;
       if (typeof i === 'number') selectRef.current?.(i);
@@ -82,20 +79,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
       onReady?.(map);
     });
 
-    // Follow the phone's light/dark setting: swap the map style and redraw our layers.
-    const scheme = matchMedia('(prefers-color-scheme: light)');
-    const onScheme = () => {
-      if (!loaded.current) return;
-      map.setStyle(styleUrl(), { diff: false });
-      map.once('style.load', () => {
-        addOverlay(map);
-        draw(map, latest.current, false);
-        drawMe(map, meRef.current);
-      });
-    };
-    scheme.addEventListener('change', onScheme);
     return () => {
-      scheme.removeEventListener('change', onScheme);
       loaded.current = false;
       map.remove();
       mapRef.current = null;

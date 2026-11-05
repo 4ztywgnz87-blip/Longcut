@@ -1,10 +1,9 @@
 // Runs the planner on real trips and writes the results to eval/out/results.json.
-// Usage: ORS_KEY=... npx tsx scripts/eval.ts [filter]
+// Usage: npx tsx scripts/eval.ts [filter]
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { BRouterRouter } from '../src/core/brouter';
-import { OrsRouter } from '../src/core/ors';
-import type { ResponseCache } from '../src/core/ors';
+import type { ResponseCache } from '../src/core/types';
 import { planRoutes } from '../src/core/planner';
 import type { LngLat } from '../src/core/geo';
 
@@ -44,7 +43,7 @@ const CASES: [string, string, number][] = [
 ];
 
 const OUT = 'eval/out';
-const CACHE_DIR = '.cache/ors';
+const CACHE_DIR = '.cache/routes';
 
 const diskCache: ResponseCache = {
   async get(key) {
@@ -85,11 +84,13 @@ async function geocode(q: string): Promise<LngLat> {
 async function main() {
   (globalThis as { LONGCUT_DEBUG?: boolean }).LONGCUT_DEBUG = !!process.env.LONGCUT_DEBUG;
   const filter = process.argv[2];
-  const engine = process.env.ROUTER ?? 'brouter';
-  const router =
-    engine === 'ors'
-      ? new OrsRouter({ apiKey: process.env.ORS_KEY ?? '', cache: diskCache })
-      : new BRouterRouter({ profileText: await readFile('brouter/longcut-run.brf', 'utf8'), cache: diskCache, maxConcurrent: 2, minIntervalMs: 700 });
+  const engine = 'brouter';
+  const router = new BRouterRouter({
+    profileText: await readFile('brouter/longcut-run.brf', 'utf8'),
+    cache: diskCache,
+    maxConcurrent: 2,
+    minIntervalMs: 700,
+  });
   const prefs = { unpavedOk: !!process.env.UNPAVED_OK, preferGreen: !!process.env.GREEN };
   await mkdir(OUT, { recursive: true });
 

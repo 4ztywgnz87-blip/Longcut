@@ -1,27 +1,11 @@
-// Hands a route file to the phone: the share sheet on iPhone/Android (so you can pick
-// Garmin Connect directly), or a normal download elsewhere.
-
-export type ExportOutcome = 'shared' | 'downloaded' | 'cancelled';
+// Saves a route file to the device (Downloads on iPhone, the browser's downloads elsewhere).
+// From there: open the file → Share → Garmin Connect. Garmin Connect does not show up
+// when sharing straight from a web page, so a download is the shortest reliable path.
 
 export const FIT_TYPE = 'application/vnd.ant.fit';
-export const GPX_TYPE = 'application/gpx+xml';
 
-function canShare(file: File): boolean {
-  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-  return !!nav.share && !!nav.canShare?.({ files: [file] });
-}
-
-/** Phone: open the share sheet. Elsewhere, or if sharing fails: download the file. */
-export async function exportFile(fileName: string, data: string | Uint8Array, type: string): Promise<ExportOutcome> {
+export function downloadFile(fileName: string, data: string | Uint8Array, type: string): void {
   const file = new File([data as BlobPart], fileName, { type });
-  if (matchMedia('(pointer: coarse)').matches && canShare(file)) {
-    try {
-      await navigator.share({ files: [file] });
-      return 'shared';
-    } catch (e) {
-      if ((e as DOMException).name === 'AbortError') return 'cancelled';
-    }
-  }
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url;
@@ -29,6 +13,5 @@ export async function exportFile(fileName: string, data: string | Uint8Array, ty
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  return 'downloaded';
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }

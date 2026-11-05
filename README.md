@@ -8,7 +8,7 @@ See [`docs/plan.md`](docs/plan.md) for the full plan (Dutch).
 
 ```bash
 npm install
-npm run dev        # app (coming in phase 2)
+npm run dev        # run the app locally
 npx vitest run     # unit tests
 ```
 
@@ -16,11 +16,12 @@ The routing engine lives in `src/core/` and has no UI dependencies.
 
 ### Testing on real routes
 
-Needs a free [openrouteservice](https://openrouteservice.org) key.
+Routes come from the public [BRouter](https://brouter.de) server with LONGCUT's own
+running profile (`brouter/longcut-run.brf`). No API key needed.
 
 ```bash
-ORS_KEY=... npx tsx scripts/eval.ts            # all test trips
-ORS_KEY=... npx tsx scripts/eval.ts Lokeren    # only trips matching "Lokeren"
+npx tsx scripts/eval.ts            # all test trips
+npx tsx scripts/eval.ts Lokeren    # only trips matching "Lokeren"
 ```
 
-API responses are cached in `.cache/`, so re-runs don't use up the daily quota.
+Responses are cached in `.cache/`, so re-runs don't hit the server again.

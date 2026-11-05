@@ -38,6 +38,12 @@ export interface RouteOptions {
   preferLit?: boolean;
 }
 
+/** Optional cache for router responses (used by the test scripts). */
+export interface ResponseCache {
+  get(key: string): Promise<unknown | undefined>;
+  set(key: string, value: unknown): Promise<void>;
+}
+
 export interface Router {
   route(points: LngLat[], opts: RouteOptions): Promise<RawRoute>;
 }

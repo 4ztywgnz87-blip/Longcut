@@ -6,14 +6,15 @@ import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
 import Segmented from './components/Segmented';
 import PlanningAnimation from './components/PlanningAnimation';
+import SheetHandle from './components/SheetHandle';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
 import { plan } from './lib/planService';
 import { savedRoutes, settings } from './lib/storage';
 import type { SavedRoute } from './lib/storage';
-import { exportFile, FIT_TYPE, GPX_TYPE } from './lib/share';
-import { routeFileName, toGpx } from './core/gpx';
+import { downloadFile, FIT_TYPE } from './lib/share';
+import { routeFileName } from './core/gpx';
 import { appleMapsUrl, googleMapsUrl } from './core/mapLinks';
 import type { LngLat } from './core/geo';
 import type { PlannedRoute } from './core/types';
@@ -51,6 +52,8 @@ export default function App() {
   const [unpavedOk, setUnpavedOk] = useState(initial.unpavedOk);
   const [preferLit, setPreferLit] = useState(initial.preferLit);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  // panels can be swiped down to see more of the map
+  const [collapsed, setCollapsed] = useState(false);
   const [routes, setRoutes] = useState<PlannedRoute[]>([]);
   const [active, setActive] = useState(0);
   const [variation, setVariation] = useState(0);
@@ -100,6 +103,9 @@ export default function App() {
     };
   }, [view.k]);
 
+  // a new screen always opens with its panel shown
+  useEffect(() => setCollapsed(false), [view.k]);
+
   // close the Garmin and Maps panels when switching screens or routes
   useEffect(() => {
     setMapsOpen(false);
@@ -111,7 +117,7 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
+    const t = setTimeout(() => setToast(null), toast.length > 40 ? 6000 : 3200);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -242,21 +248,12 @@ export default function App() {
   const routeName = (target: Place | null, meters: number) =>
     loop || !target ? `${fmtKm(meters)} km loop` : `${fmtKm(meters)} km ${target.name}`;
 
-  /** FIT is Garmin's own course format; GPX works with almost every other app. */
-  const doExport = async (
-    coords: LngLat[],
-    elevations: (number | null)[],
-    meters: number,
-    target: Place | null,
-    format: 'fit' | 'gpx',
-  ) => {
+  /** Saves a FIT course (Garmin's own format) to the device. */
+  const doExport = async (coords: LngLat[], elevations: (number | null)[], meters: number, target: Place | null) => {
     const name = routeName(target, meters);
-    const file = routeFileName(meters / 1000, loop || !target ? 'loop' : target.name, format);
-    const outcome =
-      format === 'fit'
-        ? await exportFile(file, (await loadFit()).toFit(name, coords, elevations), FIT_TYPE)
-        : await exportFile(file, toGpx(name, coords, elevations), GPX_TYPE);
-    if (outcome === 'downloaded') setToast(`${format.toUpperCase()} file saved to your downloads.`);
+    const file = routeFileName(meters / 1000, loop || !target ? 'loop' : target.name, 'fit');
+    downloadFile(file, (await loadFit()).toFit(name, coords, elevations), FIT_TYPE);
+    setToast('Saved to Downloads. Open the file → Share → Connect.');
   };
 
   const saveActive = () => {
@@ -405,13 +402,24 @@ export default function App() {
 
       {view.k === 'edit' && (
         <form
-          className="sheet edit-sheet"
+          className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''}`}
           ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
           onSubmit={(e) => {
             e.preventDefault();
             run(0);
           }}
         >
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
+          {collapsed && (
+            <button type="button" className="sheet-summary" onClick={() => setCollapsed(false)}>
+              <span className="dot dot-start" aria-hidden="true" />
+              <span className="summary-text">
+                {from?.name ?? 'Choose start'} → {loop ? 'loop' : to?.name ?? 'choose finish'}
+              </span>
+              <span className="summary-km">{km} km</span>
+            </button>
+          )}
+          <div className="sheet-body" hidden={collapsed}>
           <div className="fields">
             <div className="field-stack">
               <button type="button" className="field" onClick={() => setView({ k: 'search', field: 'from' })}>
@@ -558,6 +566,7 @@ export default function App() {
           <button type="submit" className="btn primary big">
             Plan {km} km {isLoopNow ? 'loop' : 'route'}
           </button>
+          </div>
         </form>
       )}
 
@@ -572,7 +581,8 @@ export default function App() {
       )}
 
       {view.k === 'results' && r && (
-        <div className="sheet results-sheet" ref={sheet}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} ref={sheet}>
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
               <Icon name="back" size={18} /> Edit
@@ -593,6 +603,7 @@ export default function App() {
             </div>
           </div>
 
+          <div className="sheet-body" hidden={collapsed}>
           <div className="headline">
             <div className="big-km">
               <b>{fmtKm(r.stats.length)}</b>
@@ -620,7 +631,7 @@ export default function App() {
           </dl>
           <ElevationSpark coords={r.coords} elevations={r.elevations} />
 
-          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end, 'fit')}>
+          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end)}>
             <Icon name="download" /> Send to Garmin
           </button>
           <div className="row-3">
@@ -645,9 +656,7 @@ export default function App() {
               <p className="hint">Maps apps take only a few points, so the route there is close but not exact.</p>
             </div>
           )}
-          <button type="button" className="link-btn small-link" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end, 'gpx')}>
-            Get GPX file instead
-          </button>
+          </div>
         </div>
       )}
 
@@ -682,12 +691,15 @@ export default function App() {
       )}
 
       {view.k === 'savedRoute' && (
-        <div className="sheet results-sheet" ref={sheet}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} ref={sheet}>
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>
               <Icon name="back" size={18} /> Saved
             </button>
+            {collapsed && <span className="summary-km">{fmtKm(view.route.lengthM)} km</span>}
           </div>
+          <div className="sheet-body" hidden={collapsed}>
           <div className="headline">
             <div className="big-km">
               <b>{fmtKm(view.route.lengthM)}</b>
@@ -701,7 +713,7 @@ export default function App() {
           <button
             type="button"
             className="btn primary big"
-            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'fit')}
+            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to)}
           >
             <Icon name="download" /> Send to Garmin
           </button>
@@ -720,6 +732,7 @@ export default function App() {
             >
               <Icon name="trash" /> Delete
             </button>
+          </div>
           </div>
         </div>
       )}

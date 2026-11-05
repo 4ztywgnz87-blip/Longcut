@@ -2,9 +2,8 @@
 // Free, no API key. The profile is uploaded once per option combination.
 import type { LngLat } from './geo';
 import { haversine } from './geo';
-import type { ResponseCache } from './ors';
 import { RouterError } from './types';
-import type { RawRoute, RoadKind, RouteOptions, Router, Segment } from './types';
+import type { RawRoute, ResponseCache, RoadKind, RouteOptions, Router, Segment } from './types';
 
 export interface BRouterOptions {
   /** Contents of longcut-run.brf. */
