@@ -335,21 +335,21 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 /* Phones: a more compact control panel so more of the map shows */
 @media (max-width: 899px) {
-  .sheet { gap: 8px; padding-top: 12px; }
-  .field { min-height: 44px; padding: 4px 12px; gap: 10px; }
+  .sheet { gap: 13px; padding-top: 14px; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+  .field { min-height: 42px; padding: 4px 12px; gap: 10px; }
   .field-label { font-size: 11px; }
-  .field-value { font-size: 16px; }
-  .icon-btn { width: 40px; height: 40px; }
+  .field-value { font-size: 15px; }
+  .icon-btn { width: 38px; height: 38px; }
   .field-actions { gap: 6px; }
-  .distance-row { gap: 4px; }
+  .distance-row { gap: 6px; }
   .stepper { grid-template-columns: 48px 1fr 48px; gap: 6px; }
-  .step { min-height: 46px; }
-  .km-input { font-size: 34px; line-height: 44px; }
-  .km-unit { font-size: 19px; }
-  .prefs { gap: 6px; }
+  .step { min-height: 42px; }
+  .km-input { font-size: 30px; line-height: 40px; }
+  .km-unit { font-size: 17px; }
+  .prefs { gap: 8px; }
   .pref-row { grid-template-columns: 70px 1fr; }
-  .segmented button { min-height: 32px; font-size: 14px; }
-  .btn.big { min-height: 48px; font-size: 20px; }
+  .segmented button { min-height: 30px; font-size: 14px; }
+  .btn.big { min-height: 46px; font-size: 19px; }
   .big-km b { font-size: 50px; }
   .big-km span { font-size: 22px; }
   .tab { height: 32px; font-size: 16px; }
