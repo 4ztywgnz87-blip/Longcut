@@ -18,9 +18,10 @@ export interface Settings {
   distanceKm: number;
   preferGreen: boolean;
   unpavedOk: boolean;
+  preferLit: boolean;
 }
 
-const KEYS = { favorites: 'longcut.favorites', routes: 'longcut.routes', settings: 'longcut.settings' };
+const KEYS = { favorites: 'longcut.favorites', recent: 'longcut.recent', routes: 'longcut.routes', settings: 'longcut.settings' };
 const MAX_ROUTES = 60;
 
 function read<T>(key: string, fallback: T): T {
@@ -40,6 +41,18 @@ function write(key: string, value: unknown): boolean {
     return false;
   }
 }
+
+const MAX_RECENT = 6;
+
+/** Places you picked lately, newest first. */
+export const recentPlaces = {
+  list: (): Place[] => read<Place[]>(KEYS.recent, []),
+  add(p: Place): void {
+    if (p.name === 'Current location') return;
+    const rest = recentPlaces.list().filter((r) => !sameSpot(r.coord, p.coord));
+    write(KEYS.recent, [p, ...rest].slice(0, MAX_RECENT));
+  },
+};
 
 export const favorites = {
   list: (): Place[] => read<Place[]>(KEYS.favorites, []),
@@ -74,7 +87,7 @@ export const savedRoutes = {
 };
 
 export const settings = {
-  get: (): Settings => ({ distanceKm: 15, preferGreen: false, unpavedOk: false, ...read<Partial<Settings>>(KEYS.settings, {}) }),
+  get: (): Settings => ({ distanceKm: 15, preferGreen: false, unpavedOk: false, preferLit: false, ...read<Partial<Settings>>(KEYS.settings, {}) }),
   set: (s: Settings) => write(KEYS.settings, s),
 };
 

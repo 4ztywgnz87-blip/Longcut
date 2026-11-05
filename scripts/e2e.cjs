@@ -67,14 +67,22 @@ const NIEUWKERKEN = { latitude: 51.1934, longitude: 4.178 };
   step('export gpx');
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 10000 }).catch(() => null),
-    page.getByRole('button', { name: /Send GPX to Garmin/ }).click(),
+    page.getByRole('button', { name: /Send to Garmin/ }).click(),
   ]);
   if (download) {
     const p = `${out}/${download.suggestedFilename()}`;
     await download.saveAs(p);
-    const gpx = fs.readFileSync(p, 'utf8');
-    console.log('gpx', download.suggestedFilename(), (gpx.match(/<trkpt/g) || []).length, 'points');
+    console.log('download', download.suggestedFilename(), fs.statSync(p).size, 'bytes');
   } else console.log('gpx: no download (share sheet path?)');
+
+  step('recent searches');
+  await page.getByRole('button', { name: /Edit/ }).click();
+  await page.getByRole('button', { name: /Finish/ }).click();
+  console.log('recent:', (await page.locator('.list-title').allTextContents()).join(', '), '|', (await page.locator('.place-name').allTextContents()).slice(0, 3).join(', '));
+  await shot('6c-recent');
+  await page.locator('.place-main').first().click();
+  await page.getByRole('button', { name: /^Plan / }).click();
+  await page.waitForSelector('.results-sheet', { timeout: 90000 });
 
   step('save');
   await page.getByRole('button', { name: /^Save$/ }).click();

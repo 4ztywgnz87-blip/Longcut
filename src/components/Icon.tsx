@@ -8,6 +8,7 @@ const PATHS: Record<string, string> = {
   swap: 'M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3',
   loop: 'M4.6 9A8 7.2 0 0 1 19.9 11.4M19.9 11.4l-2.8-1.6M19.9 11.4l1.7-2.7M19.4 15A8 7.2 0 0 1 4.1 12.6M4.1 12.6l2.8 1.6M4.1 12.6l-1.7 2.7',
   minus: 'M5 12h14',
+  chevron: 'M6 9l6 6 6-6',
   plus: 'M12 5v14M5 12h14',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   map: 'M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',

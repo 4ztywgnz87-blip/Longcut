@@ -12,6 +12,7 @@ import type { Feature, FeatureCollection } from 'geojson';
 export interface MapRoute {
   coords: LngLat[];
   roads?: RoadKind[];
+  unpaved?: boolean[];
 }
 
 interface Props {
@@ -27,7 +28,10 @@ interface Props {
   me?: { coord: LngLat; accuracy: number } | null;
 }
 
-const STYLE = 'https://tiles.openfreemap.org/styles/dark';
+const styleUrl = () =>
+  matchMedia('(prefers-color-scheme: light)').matches
+    ? 'https://tiles.openfreemap.org/styles/positron'
+    : 'https://tiles.openfreemap.org/styles/dark';
 const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const HOME: LngLat = [4.18, 51.19]; // Waasland
 
@@ -50,7 +54,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     if (!el.current) return;
     const map = new maplibregl.Map({
       container: el.current,
-      style: STYLE,
+      style: styleUrl(),
       center: start ?? HOME,
       zoom: 11.5,
       attributionControl: { compact: true },
@@ -60,58 +64,16 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     map.touchZoomRotate.disableRotation();
     mapRef.current = map;
 
+    // tapping an alternative selects it (layer listeners survive a style change)
+    map.on('click', 'alt', (e) => {
+      const i = e.features?.[0]?.properties?.i;
+      if (typeof i === 'number') selectRef.current?.(i);
+    });
+    map.on('mouseenter', 'alt', () => (map.getCanvas().style.cursor = 'pointer'));
+    map.on('mouseleave', 'alt', () => (map.getCanvas().style.cursor = ''));
+
     map.on('load', () => {
-      const accent = cssVar('--accent', '#D7FF3A');
-      const alt = cssVar('--route-alt', '#8A8A99');
-      const busy = cssVar('--busy', '#FF5A4E');
-      for (const id of ['alt', 'main']) {
-        map.addSource(id, { type: 'geojson', data: EMPTY });
-        map.addLayer({
-          id: `${id}-casing`, type: 'line', source: id,
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#000', 'line-width': id === 'main' ? 9 : 7, 'line-opacity': 0.55 },
-        });
-        map.addLayer({
-          id, type: 'line', source: id,
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: id === 'main'
-            ? { 'line-color': accent, 'line-width': 5 }
-            : { 'line-color': alt, 'line-width': 3.5, 'line-opacity': 0.85 },
-        });
-      }
-      map.addSource('busy', { type: 'geojson', data: EMPTY });
-      map.addLayer({
-        id: 'busy', type: 'line', source: 'busy',
-        layout: { 'line-cap': 'round' },
-        paint: { 'line-color': busy, 'line-width': 5 },
-      });
-      map.addSource('pts', { type: 'geojson', data: EMPTY });
-      map.addLayer({
-        id: 'pts', type: 'circle', source: 'pts',
-        paint: {
-          'circle-radius': 8,
-          'circle-color': ['match', ['get', 'k'], 'start', '#FFFFFF', '#111113'],
-          'circle-stroke-color': '#FFFFFF',
-          'circle-stroke-width': 3,
-        },
-      });
-      // your own position: blue dot with a soft accuracy circle, like Google Maps
-      map.addSource('me', { type: 'geojson', data: EMPTY });
-      map.addLayer({
-        id: 'me-accuracy', type: 'circle', source: 'me',
-        paint: { 'circle-color': '#4C8DFF', 'circle-opacity': 0.15, 'circle-stroke-color': '#4C8DFF', 'circle-stroke-opacity': 0.3, 'circle-stroke-width': 1, 'circle-radius': 0 },
-      });
-      map.addLayer({
-        id: 'me', type: 'circle', source: 'me',
-        paint: { 'circle-radius': 7, 'circle-color': '#4C8DFF', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5 },
-      });
-      // tapping an alternative selects it
-      map.on('click', 'alt', (e) => {
-        const i = e.features?.[0]?.properties?.i;
-        if (typeof i === 'number') selectRef.current?.(i);
-      });
-      map.on('mouseenter', 'alt', () => (map.getCanvas().style.cursor = 'pointer'));
-      map.on('mouseleave', 'alt', () => (map.getCanvas().style.cursor = ''));
+      addOverlay(map);
       // start with the attribution collapsed to the (i) button
       el.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
       loaded.current = true;
@@ -119,7 +81,21 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
       drawMe(map, meRef.current);
       onReady?.(map);
     });
+
+    // Follow the phone's light/dark setting: swap the map style and redraw our layers.
+    const scheme = matchMedia('(prefers-color-scheme: light)');
+    const onScheme = () => {
+      if (!loaded.current) return;
+      map.setStyle(styleUrl(), { diff: false });
+      map.once('style.load', () => {
+        addOverlay(map);
+        draw(map, latest.current, false);
+        drawMe(map, meRef.current);
+      });
+    };
+    scheme.addEventListener('change', onScheme);
     return () => {
+      scheme.removeEventListener('change', onScheme);
       loaded.current = false;
       map.remove();
       mapRef.current = null;
@@ -168,22 +144,33 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
     features: s.routes.map((r, i) => (i === s.active ? null : line(r.coords, { i }))).filter(Boolean) as Feature[],
   });
 
-  const busy: Feature[] = [];
-  if (main?.roads) {
-    // join consecutive busy pieces into one line
+  /** Joins consecutive pieces of the active route that match into lines. */
+  const stretches = (match: (i: number) => boolean): Feature[] => {
+    const out: Feature[] = [];
+    if (!main) return out;
     let run: LngLat[] = [];
-    main.roads.forEach((road, i) => {
-      if (road === 'main' || road === 'secondary') {
+    for (let i = 0; i + 1 < main.coords.length; i++) {
+      if (match(i)) {
         if (!run.length) run.push(main.coords[i]);
         run.push(main.coords[i + 1]);
       } else if (run.length) {
-        busy.push(line(run));
+        out.push(line(run));
         run = [];
       }
-    });
-    if (run.length) busy.push(line(run));
-  }
-  (map.getSource('busy') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: busy });
+    }
+    if (run.length) out.push(line(run));
+    return out;
+  };
+  const roads = main?.roads;
+  const unpaved = main?.unpaved;
+  (map.getSource('busy') as maplibregl.GeoJSONSource).setData({
+    type: 'FeatureCollection',
+    features: roads ? stretches((i) => roads[i] === 'main' || roads[i] === 'secondary') : [],
+  });
+  (map.getSource('unpaved') as maplibregl.GeoJSONSource).setData({
+    type: 'FeatureCollection',
+    features: unpaved ? stretches((i) => unpaved[i]) : [],
+  });
 
   const pts: Feature[] = [];
   if (s.end) pts.push({ type: 'Feature', properties: { k: 'end' }, geometry: { type: 'Point', coordinates: s.end } });
@@ -212,4 +199,62 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
   const b = new maplibregl.LngLatBounds(all[0], all[0]);
   all.forEach((c) => b.extend(c));
   map.fitBounds(b, { padding, duration: 700, maxZoom: 15 });
+}
+
+/** Our own layers on top of the base map: routes, stretches, points and your position. */
+function addOverlay(map: maplibregl.Map) {
+  if (map.getSource('main')) return;
+  const accent = cssVar('--accent', '#D7FF3A');
+  const alt = cssVar('--route-alt', '#8A8A99');
+  const busy = cssVar('--busy', '#FF5A4E');
+  const fg = cssVar('--fg', '#F3F3F5');
+  const bg = cssVar('--bg', '#111113');
+  for (const id of ['alt', 'main']) {
+    map.addSource(id, { type: 'geojson', data: EMPTY });
+    map.addLayer({
+      id: `${id}-casing`, type: 'line', source: id,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#000', 'line-width': id === 'main' ? 9 : 7, 'line-opacity': 0.55 },
+    });
+    map.addLayer({
+      id, type: 'line', source: id,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: id === 'main'
+        ? { 'line-color': accent, 'line-width': 5 }
+        : { 'line-color': alt, 'line-width': 3.5, 'line-opacity': 0.85 },
+    });
+  }
+  // unpaved stretches: dashes in the background colour over the route line
+  map.addSource('unpaved', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'unpaved', type: 'line', source: 'unpaved',
+    layout: { 'line-join': 'round' },
+    paint: { 'line-color': bg, 'line-width': 3, 'line-dasharray': [1, 1] },
+  });
+  map.addSource('busy', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'busy', type: 'line', source: 'busy',
+    layout: { 'line-cap': 'round' },
+    paint: { 'line-color': busy, 'line-width': 5 },
+  });
+  map.addSource('pts', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'pts', type: 'circle', source: 'pts',
+    paint: {
+      'circle-radius': 8,
+      'circle-color': ['match', ['get', 'k'], 'start', fg, bg],
+      'circle-stroke-color': fg,
+      'circle-stroke-width': 3,
+    },
+  });
+  // your own position: blue dot with a soft accuracy circle, like Google Maps
+  map.addSource('me', { type: 'geojson', data: EMPTY });
+  map.addLayer({
+    id: 'me-accuracy', type: 'circle', source: 'me',
+    paint: { 'circle-color': '#4C8DFF', 'circle-opacity': 0.15, 'circle-stroke-color': '#4C8DFF', 'circle-stroke-opacity': 0.3, 'circle-stroke-width': 1, 'circle-radius': 0 },
+  });
+  map.addLayer({
+    id: 'me', type: 'circle', source: 'me',
+    paint: { 'circle-radius': 7, 'circle-color': '#4C8DFF', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5 },
+  });
 }

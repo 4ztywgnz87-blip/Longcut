@@ -25,8 +25,8 @@ ${pts}
 `;
 }
 
-/** A safe file name like "longcut-25km-sint-niklaas.gpx". */
-export function gpxFileName(km: number, to: string): string {
+/** A safe file name like "longcut-25km-sint-niklaas.gpx" (or .fit). */
+export function routeFileName(km: number, to: string, ext: 'gpx' | 'fit'): string {
   const slug = to
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -34,5 +34,5 @@ export function gpxFileName(km: number, to: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 30);
-  return `longcut-${km.toFixed(1).replace('.0', '')}km${slug ? `-${slug}` : ''}.gpx`;
+  return `longcut-${km.toFixed(1).replace('.0', '')}km${slug ? `-${slug}` : ''}.${ext}`;
 }

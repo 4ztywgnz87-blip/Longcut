@@ -34,6 +34,8 @@ export interface RawRoute {
 export interface RouteOptions {
   unpavedOk: boolean;
   preferGreen: boolean;
+  /** Prefer streets with street lights (optional so older callers keep working). */
+  preferLit?: boolean;
 }
 
 export interface Router {
@@ -74,6 +76,8 @@ export interface PlannedRoute {
   elevations: (number | null)[];
   /** Road kind per piece of the route (between coords[i] and coords[i+1]). */
   roads: RoadKind[];
+  /** Whether each piece of the route is unpaved. */
+  unpaved: boolean[];
   stats: RouteStats;
   score: number; // lower is better
   /** Distance deviation from the requested distance, as a fraction (+0.02 = 2% longer). */

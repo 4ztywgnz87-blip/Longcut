@@ -5,17 +5,22 @@ import type { MapRoute } from './components/MapView';
 import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
 import Segmented from './components/Segmented';
+import PlanningAnimation from './components/PlanningAnimation';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
 import { plan } from './lib/planService';
 import { savedRoutes, settings } from './lib/storage';
 import type { SavedRoute } from './lib/storage';
-import { exportGpx } from './lib/share';
-import { gpxFileName, toGpx } from './core/gpx';
+import { exportFile, FIT_TYPE, GPX_TYPE } from './lib/share';
+import { routeFileName, toGpx } from './core/gpx';
 import { appleMapsUrl, googleMapsUrl } from './core/mapLinks';
 import type { LngLat } from './core/geo';
 import type { PlannedRoute } from './core/types';
+
+// Garmin's FIT library is large: load it only once a route is on screen.
+let fitLib: Promise<typeof import('./core/fit')> | null = null;
+const loadFit = () => (fitLib ??= import('./core/fit'));
 
 type Field = 'from' | 'to';
 type View =
@@ -44,6 +49,8 @@ export default function App() {
   const [kmText, setKmText] = useState(String(initial.distanceKm));
   const [preferGreen, setPreferGreen] = useState(initial.preferGreen);
   const [unpavedOk, setUnpavedOk] = useState(initial.unpavedOk);
+  const [preferLit, setPreferLit] = useState(initial.preferLit);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [routes, setRoutes] = useState<PlannedRoute[]>([]);
   const [active, setActive] = useState(0);
   const [variation, setVariation] = useState(0);
@@ -63,8 +70,8 @@ export default function App() {
 
   // --- settings & layout ---------------------------------------------------
   useEffect(() => {
-    settings.set({ distanceKm: km, preferGreen, unpavedOk });
-  }, [km, preferGreen, unpavedOk]);
+    settings.set({ distanceKm: km, preferGreen, unpavedOk, preferLit });
+  }, [km, preferGreen, unpavedOk, preferLit]);
 
   useEffect(() => {
     const mq = matchMedia('(min-width: 900px)');
@@ -97,6 +104,10 @@ export default function App() {
   useEffect(() => {
     setMapsOpen(false);
   }, [view.k, active]);
+
+  useEffect(() => {
+    if (view.k === 'results' || view.k === 'savedRoute') loadFit();
+  }, [view.k]);
 
   useEffect(() => {
     if (!toast) return;
@@ -193,7 +204,7 @@ export default function App() {
         start: from.coord,
         end: end.coord,
         distanceKm: km,
-        prefs: { unpavedOk, preferGreen },
+        prefs: { unpavedOk, preferGreen, preferLit },
         variation: nextVariation,
       });
       if (r.ok) {
@@ -227,18 +238,25 @@ export default function App() {
   };
 
   // --- export & save -------------------------------------------------------
+  // Short names: the watch shows only the first 15 or so characters.
   const routeName = (target: Place | null, meters: number) =>
-    loop || !target ? `LONGCUT ${fmtKm(meters)} km loop` : `LONGCUT ${fmtKm(meters)} km to ${target.name}`;
+    loop || !target ? `${fmtKm(meters)} km loop` : `${fmtKm(meters)} km ${target.name}`;
 
+  /** FIT is Garmin's own course format; GPX works with almost every other app. */
   const doExport = async (
     coords: LngLat[],
     elevations: (number | null)[],
     meters: number,
     target: Place | null,
+    format: 'fit' | 'gpx',
   ) => {
     const name = routeName(target, meters);
-    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations));
-    if (outcome === 'downloaded') setToast('GPX saved to your downloads.');
+    const file = routeFileName(meters / 1000, loop || !target ? 'loop' : target.name, format);
+    const outcome =
+      format === 'fit'
+        ? await exportFile(file, (await loadFit()).toFit(name, coords, elevations), FIT_TYPE)
+        : await exportFile(file, toGpx(name, coords, elevations), GPX_TYPE);
+    if (outcome === 'downloaded') setToast(`${format.toUpperCase()} file saved to your downloads.`);
   };
 
   const saveActive = () => {
@@ -475,7 +493,22 @@ export default function App() {
             </div>
           </div>
 
-          <div className="prefs">
+          <button
+            type="button"
+            className={`options-row ${optionsOpen ? 'open' : ''}`}
+            aria-expanded={optionsOpen}
+            aria-controls="route-options"
+            onClick={() => setOptionsOpen(!optionsOpen)}
+          >
+            <span className="field-label">Options</span>
+            <span className="options-summary">
+              <span className={unpavedOk ? 'on' : ''}>{unpavedOk ? 'Trails' : 'Paved'}</span>
+              <span className={preferGreen ? 'on' : ''}>{preferGreen ? 'Green' : 'Any scenery'}</span>
+              <span className={preferLit ? 'on' : ''}>{preferLit ? 'Lit' : 'Daylight'}</span>
+            </span>
+            <Icon name="chevron" size={18} />
+          </button>
+          <div className="prefs" id="route-options" hidden={!optionsOpen}>
             <Segmented
               label="Surface"
               value={unpavedOk}
@@ -492,6 +525,15 @@ export default function App() {
               options={[
                 [false, 'Any'],
                 [true, 'Parks & forest'],
+              ]}
+            />
+            <Segmented
+              label="Light"
+              value={preferLit}
+              onChange={setPreferLit}
+              options={[
+                [false, 'Daylight'],
+                [true, 'Lit streets'],
               ]}
             />
           </div>
@@ -521,12 +563,10 @@ export default function App() {
 
       {view.k === 'planning' && (
         <div className="sheet planning-sheet" ref={sheet} role="status" aria-live="polite">
-          <div className="progress" aria-hidden="true">
-            <span />
-          </div>
+          <PlanningAnimation />
           <p className="planning-title">Finding your longcut</p>
-          <p className="hint">
-            Trying detours for {km} km{elapsed >= 3 ? ` · ${elapsed}s` : ''}
+          <p className="hint planning-step" key={elapsed < 1 ? 1 : elapsed < 4 ? 2 : 3}>
+            {elapsed < 1 ? 'Measuring the direct way' : elapsed < 4 ? `Trying detours for ${km} km` : 'Picking the quietest ones'}
           </p>
         </div>
       )}
@@ -580,8 +620,8 @@ export default function App() {
           </dl>
           <ElevationSpark coords={r.coords} elevations={r.elevations} />
 
-          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end)}>
-            <Icon name="download" /> Send GPX to Garmin
+          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end, 'fit')}>
+            <Icon name="download" /> Send to Garmin
           </button>
           <div className="row-3">
             <button type="button" className={`btn ghost ${savedIds[active] ? 'on' : ''}`} aria-pressed={!!savedIds[active]} onClick={saveActive}>
@@ -602,9 +642,12 @@ export default function App() {
               <a className="btn ghost" href={appleMapsUrl(r.coords)} target="_blank" rel="noreferrer">
                 Apple Maps
               </a>
-              <p className="hint">Maps apps take only a few points, so the route there is close but not exact. Use GPX for the exact route.</p>
+              <p className="hint">Maps apps take only a few points, so the route there is close but not exact.</p>
             </div>
           )}
+          <button type="button" className="link-btn small-link" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end, 'gpx')}>
+            Get GPX file instead
+          </button>
         </div>
       )}
 
@@ -658,9 +701,9 @@ export default function App() {
           <button
             type="button"
             className="btn primary big"
-            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to)}
+            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'fit')}
           >
-            <Icon name="download" /> Send GPX to Garmin
+            <Icon name="download" /> Send to Garmin
           </button>
           <div className="row-2">
             <a className="btn ghost" href={googleMapsUrl(view.route.coords)} target="_blank" rel="noreferrer">

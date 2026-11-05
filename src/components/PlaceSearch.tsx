@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { LngLat } from '../core/geo';
 import type { Place } from '../lib/geocode';
 import { searchPlaces } from '../lib/geocode';
-import { favorites } from '../lib/storage';
+import { favorites, recentPlaces } from '../lib/storage';
 import { Icon } from './Icon';
 
 interface Props {
@@ -20,6 +20,11 @@ export default function PlaceSearch({ title, near, canUseLocation, onPick, onUse
   const [results, setResults] = useState<Place[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [favs, setFavs] = useState<Place[]>(() => favorites.list());
+  const [recent] = useState<Place[]>(() => recentPlaces.list());
+  const pick = (p: Place) => {
+    recentPlaces.add(p);
+    onPick(p);
+  };
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => input.current?.focus(), []);
@@ -57,7 +62,7 @@ export default function PlaceSearch({ title, near, canUseLocation, onPick, onUse
 
   const row = (p: Place, key: string) => (
     <li key={key} className="place-row">
-      <button type="button" className="place-main" onClick={() => onPick(p)}>
+      <button type="button" className="place-main" onClick={() => pick(p)}>
         <span className="place-name">{p.name}</span>
         {p.detail && <span className="place-detail">{p.detail}</span>}
       </button>
@@ -115,6 +120,13 @@ export default function PlaceSearch({ title, near, canUseLocation, onPick, onUse
           <p className="hint">No places found in Belgium for “{query.trim()}”.</p>
         )}
         {results.length > 0 && <ul className="places">{results.map((p, i) => row(p, `r${i}`))}</ul>}
+
+        {query.trim().length < 2 && recent.length > 0 && (
+          <>
+            <h3 className="list-title">Recent</h3>
+            <ul className="places">{recent.map((p, i) => row(p, `h${i}`))}</ul>
+          </>
+        )}
 
         {query.trim().length < 2 && (
           <>

@@ -256,6 +256,7 @@ function toCandidate(segments: Segment[], target: number, req: PlanRequest, labe
     coords: segments.length ? [segments[0].from, ...segments.map((s) => s.to)] : [],
     elevations: segments.length ? [segments[0].ele, ...segments.map((s) => s.ele)] : [],
     roads: segments.map((s) => s.road),
+    unpaved: segments.map((s) => s.unpaved),
     stats,
     score,
     deviation: dev,

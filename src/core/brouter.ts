@@ -58,7 +58,8 @@ export class BRouterRouter implements Router {
   profileFor(ro: RouteOptions): string {
     return this.opts.profileText
       .replace(/^assign avoid_unpaved\s*=\s*\w+/m, `assign avoid_unpaved = ${ro.unpavedOk ? 'false' : 'true'}`)
-      .replace(/^assign prefer_green\s*=\s*\w+/m, `assign prefer_green  = ${ro.preferGreen ? 'true' : 'false'}`);
+      .replace(/^assign prefer_green\s*=\s*\w+/m, `assign prefer_green  = ${ro.preferGreen ? 'true' : 'false'}`)
+      .replace(/^assign prefer_lit\s*=\s*\w+/m, `assign prefer_lit    = ${ro.preferLit ? 'true' : 'false'}`);
   }
 
   private profileId(ro: RouteOptions): Promise<string> {
