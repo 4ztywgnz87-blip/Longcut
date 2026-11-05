@@ -9,15 +9,15 @@ export function canShareFiles(): boolean {
   return !!nav.share && !!nav.canShare?.({ files: [probe] });
 }
 
-export async function exportGpx(fileName: string, gpx: string, how: 'share' | 'download'): Promise<ExportOutcome> {
+/** Phone: open the share sheet. Elsewhere, or if sharing fails: download the file. */
+export async function exportGpx(fileName: string, gpx: string): Promise<ExportOutcome> {
   const file = new File([gpx], fileName, { type: 'application/gpx+xml' });
-  if (how === 'share') {
-    if (!canShareFiles()) return 'unsupported';
+  if (matchMedia('(pointer: coarse)').matches && canShareFiles()) {
     try {
       await navigator.share({ files: [file] });
       return 'shared';
     } catch (e) {
-      return (e as DOMException).name === 'AbortError' ? 'cancelled' : 'unsupported';
+      if ((e as DOMException).name === 'AbortError') return 'cancelled';
     }
   }
   const url = URL.createObjectURL(file);

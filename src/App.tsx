@@ -4,7 +4,7 @@ import MapView from './components/MapView';
 import type { MapRoute } from './components/MapView';
 import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
-import GarminPanel from './components/GarminPanel';
+import Segmented from './components/Segmented';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
@@ -52,7 +52,6 @@ export default function App() {
   const [gps, setGps] = useState<LngLat | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [mapsOpen, setMapsOpen] = useState(false);
-  const [garminOpen, setGarminOpen] = useState(false);
   const [saved, setSaved] = useState<SavedRoute[]>(() => savedRoutes.list());
   const [savedIds, setSavedIds] = useState<Record<number, string>>({});
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -81,7 +80,6 @@ export default function App() {
 
   // close the Garmin and Maps panels when switching screens or routes
   useEffect(() => {
-    setGarminOpen(false);
     setMapsOpen(false);
   }, [view.k, active]);
 
@@ -172,12 +170,10 @@ export default function App() {
     elevations: (number | null)[],
     meters: number,
     target: Place | null,
-    how: 'share' | 'download',
   ) => {
     const name = routeName(target, meters);
-    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations), how);
+    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations));
     if (outcome === 'downloaded') setToast('GPX saved to your downloads.');
-    if (outcome === 'unsupported') setToast('Sharing is not available here. Use Save GPX file instead.');
   };
 
   const saveActive = () => {
@@ -263,7 +259,9 @@ export default function App() {
       />
 
       <header className="topbar">
-        <span className="brand">Longcut</span>
+        <span className="brand">
+          <span className="brand-l">L</span>ongcut
+        </span>
         {(view.k === 'edit' || view.k === 'results') && (
           <button type="button" className="pill-btn" onClick={() => setView({ k: 'saved' })}>
             <Icon name="list" size={18} /> Saved{saved.length ? ` · ${saved.length}` : ''}
@@ -400,24 +398,24 @@ export default function App() {
           </div>
 
           <div className="prefs">
-            <div className="pref-row">
-              <span className="field-label" id="surface-label">Surface</span>
-              <div className="segmented" role="radiogroup" aria-labelledby="surface-label">
-                <button type="button" role="radio" aria-checked={!unpavedOk} className={!unpavedOk ? 'on' : ''} onClick={() => setUnpavedOk(false)}>
-                  Mostly paved
-                </button>
-                <button type="button" role="radio" aria-checked={unpavedOk} className={unpavedOk ? 'on' : ''} onClick={() => setUnpavedOk(true)}>
-                  Trails welcome
-                </button>
-              </div>
-            </div>
-            <label className="switch-row" htmlFor="green">
-              <span>
-                <span className="switch-title">Through parks &amp; forest</span>
-                <span className="switch-sub">Small detours for greener stretches</span>
-              </span>
-              <input id="green" type="checkbox" role="switch" checked={preferGreen} onChange={(e) => setPreferGreen(e.target.checked)} />
-            </label>
+            <Segmented
+              label="Surface"
+              value={unpavedOk}
+              onChange={setUnpavedOk}
+              options={[
+                [false, 'Mostly paved'],
+                [true, 'Trails welcome'],
+              ]}
+            />
+            <Segmented
+              label="Scenery"
+              value={preferGreen}
+              onChange={setPreferGreen}
+              options={[
+                [false, 'Any'],
+                [true, 'Parks & forest'],
+              ]}
+            />
           </div>
 
           {problem && (
@@ -504,10 +502,9 @@ export default function App() {
           </dl>
           <ElevationSpark coords={r.coords} elevations={r.elevations} />
 
-          <button type="button" className="btn primary big" aria-expanded={garminOpen} onClick={() => setGarminOpen(!garminOpen)}>
-            <Icon name="download" /> Send to Garmin
+          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end)}>
+            <Icon name="download" /> Send GPX to Garmin
           </button>
-          {garminOpen && <GarminPanel onShare={() => doExport(r.coords, r.elevations, r.stats.length, end, 'share')} onSave={() => doExport(r.coords, r.elevations, r.stats.length, end, 'download')} />}
           <div className="row-3">
             <button type="button" className={`btn ghost ${savedIds[active] ? 'on' : ''}`} aria-pressed={!!savedIds[active]} onClick={saveActive}>
               <Icon name="bookmark" /> {savedIds[active] ? 'Saved' : 'Save'}
@@ -580,15 +577,13 @@ export default function App() {
             </span>
           </div>
           <ElevationSpark coords={view.route.coords} elevations={view.route.elevations} />
-          <button type="button" className="btn primary big" aria-expanded={garminOpen} onClick={() => setGarminOpen(!garminOpen)}>
-            <Icon name="download" /> Send to Garmin
+          <button
+            type="button"
+            className="btn primary big"
+            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to)}
+          >
+            <Icon name="download" /> Send GPX to Garmin
           </button>
-          {garminOpen && (
-            <GarminPanel
-              onShare={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'share')}
-              onSave={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'download')}
-            />
-          )}
           <div className="row-2">
             <a className="btn ghost" href={googleMapsUrl(view.route.coords)} target="_blank" rel="noreferrer">
               <Icon name="map" /> Google Maps

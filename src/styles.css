@@ -41,27 +41,37 @@ button:disabled { opacity: 0.35; cursor: default; }
 .app { position: fixed; inset: 0; overflow: hidden; }
 .app > .map { position: absolute; inset: 0; background: var(--bg); }
 .maplibregl-ctrl-attrib { font-size: 10px; }
-.maplibregl-ctrl-bottom-right { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 72px); }
+.maplibregl-ctrl-bottom-right { bottom: auto; top: calc(max(env(safe-area-inset-top, 0px), 44px) + 62px); }
 
 /* Top bar */
 .topbar {
-  /* Solid band: the phone's status-bar fade sits on plain background, not on the text. */
+  /* Floats over the map, which runs to the top edge. On phones it stays below the
+     status bar and the fade iOS draws under it. */
+  --top: calc(env(safe-area-inset-top, 0px) + 12px);
   position: absolute;
   top: 0; left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--gutter-r) 10px var(--gutter-l);
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  padding: var(--top) var(--gutter-r) 0 var(--gutter-l);
+  pointer-events: none;
   z-index: 3;
 }
+@media (pointer: coarse) {
+  .topbar { --top: calc(max(env(safe-area-inset-top, 0px), 44px) + 14px); }
+}
+.topbar > * { pointer-events: auto; }
 .brand {
   font-family: var(--display);
   font-weight: 800;
   font-size: 22px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  height: 40px; display: inline-flex; align-items: center;
+  padding: 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 999px;
 }
-.brand::first-letter { color: var(--accent); }
+.brand-l { color: var(--accent); }
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px;
   height: 40px; padding: 0 14px;
@@ -76,10 +86,10 @@ button:disabled { opacity: 0.35; cursor: default; }
   left: 0; right: 0; bottom: 0;
   z-index: 4;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   max-height: 72%;
   overflow-y: auto;
-  padding: 16px var(--gutter-r) max(12px, env(safe-area-inset-bottom, 0px)) var(--gutter-l);
+  padding: 14px var(--gutter-r) max(10px, env(safe-area-inset-bottom, 0px)) var(--gutter-l);
   background: var(--bg);
   border-top: 1px solid var(--line);
   border-radius: 20px 20px 0 0;
@@ -108,7 +118,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 .field {
   display: flex; align-items: center; gap: 12px;
-  min-height: 58px; padding: 8px 14px;
+  min-height: 50px; padding: 6px 14px;
   border: 0; background: none; text-align: left;
   min-width: 0;
 }
@@ -127,20 +137,20 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 .icon-btn {
   display: inline-grid; place-items: center;
-  width: 46px; height: 46px;
+  width: 44px; height: 44px;
   border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface);
 }
 .icon-btn.toggle.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
 /* Distance */
-.distance-row { display: grid; gap: 8px; }
+.distance-row { display: grid; gap: 6px; }
 .stepper { display: grid; grid-template-columns: 56px 1fr 56px; gap: 8px; align-items: stretch; }
 .step {
   display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--surface);
-  min-height: 60px;
+  min-height: 52px;
 }
 .km-box {
   display: flex; align-items: baseline; justify-content: center; gap: 6px;
@@ -153,7 +163,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 .km-input {
   width: 100%; min-width: 0;
   border: 0; background: none; outline: none;
-  font-family: var(--display); font-weight: 800; font-size: 44px; line-height: 58px;
+  font-family: var(--display); font-weight: 800; font-size: 40px; line-height: 50px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -161,51 +171,21 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 /* Preference chips */
 /* Route preferences */
-.prefs { display: grid; gap: 12px; }
-.pref-row { display: grid; gap: 8px; }
+.prefs { display: grid; gap: 8px; }
+.pref-row { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: center; }
 .segmented {
   display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 3px;
+  border: 1px solid var(--line); border-radius: 13px;
   background: var(--surface);
 }
 .segmented button {
-  min-height: 40px; border: 0; border-radius: 10px;
+  min-height: 36px; border: 0; border-radius: 10px;
   background: none; color: var(--muted);
   font-weight: 600; font-size: 15px;
 }
 .segmented button.on { background: var(--fg); color: var(--bg); }
-.switch-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  cursor: pointer;
-}
-.switch-title { display: block; font-weight: 600; }
-.switch-sub { display: block; font-size: 14px; color: var(--muted); }
-.switch-row input {
-  appearance: none; flex: none;
-  width: 50px; height: 30px; margin: 0;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  position: relative;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.switch-row input::after {
-  content: ""; position: absolute; top: 3px; left: 3px;
-  width: 22px; height: 22px; border-radius: 50%;
-  background: var(--muted);
-  transition: transform 0.15s, background 0.15s;
-}
-.switch-row input:checked { background: var(--accent); border-color: var(--accent); }
-.switch-row input:checked::after { transform: translateX(20px); background: var(--on-accent); }
 
-/* Garmin export help */
-.garmin { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-.garmin-way { display: grid; gap: 6px; }
-.garmin .btn { background: var(--surface-2); }
-.garmin .hint { font-size: 14px; }
-.garmin .hint b { color: var(--fg); font-weight: 600; }
 
 /* Buttons */
 .btn {
@@ -219,15 +199,15 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.big {
-  min-height: 56px;
+  min-height: 54px;
   font-family: var(--display); font-weight: 800; font-size: 22px; letter-spacing: 0.04em; text-transform: uppercase;
 }
 .btn.small { min-height: 38px; font-size: 15px; justify-self: start; }
 .btn.ghost.on { border-color: var(--accent); color: var(--accent); }
 .btn.danger { color: var(--busy); }
 .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.row-3 .btn { padding: 0 8px; font-size: 15px; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1.35fr; gap: 8px; }
+.row-3 .btn { padding: 0 8px; font-size: 15px; white-space: nowrap; gap: 6px; }
 .link-btn {
   display: inline-flex; align-items: center; gap: 4px;
   border: 0; background: none; padding: 6px 0;
