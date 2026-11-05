@@ -22,7 +22,7 @@
   /* accent used as text */
   --accent-text: #d7ff3a;
   /* frosted glass for the panel and map buttons */
-  --glass: rgba(17, 17, 19, 0.45);
+  --glass: rgba(17, 17, 19, 0.3);
   --glass-solid: rgba(17, 17, 19, 0.92);
   --glass-edge: rgba(255, 255, 255, 0.12);
   --glass-tint: rgba(255, 255, 255, 0.06);
