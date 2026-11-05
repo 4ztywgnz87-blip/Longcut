@@ -24,6 +24,11 @@ export default function PlaceSearch({ title, near, canUseLocation, onPick, onUse
 
   useEffect(() => input.current?.focus(), []);
 
+  // Your position changes all the time while the GPS is on; it should only bias the
+  // ranking, not restart a search that is still running.
+  const nearRef = useRef(near);
+  nearRef.current = near;
+
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults([]);
@@ -33,18 +38,19 @@ export default function PlaceSearch({ title, near, canUseLocation, onPick, onUse
     const ctl = new AbortController();
     const t = setTimeout(async () => {
       setStatus('loading');
+      setResults([]);
       try {
-        setResults(await searchPlaces(query, near ?? undefined, ctl.signal));
-        setStatus('idle');
-      } catch (e) {
+        await searchPlaces(query, nearRef.current ?? undefined, ctl.signal, setResults);
+        if (!ctl.signal.aborted) setStatus('idle');
+      } catch {
         if (!ctl.signal.aborted) setStatus('error');
       }
-    }, 250);
+    }, 200);
     return () => {
       clearTimeout(t);
       ctl.abort();
     };
-  }, [query, near]);
+  }, [query]);
 
   const toggleFav = (p: Place) => setFavs(favorites.toggle(p));
   const isFav = (p: Place) => favs.some((f) => f.coord[0] === p.coord[0] && f.coord[1] === p.coord[1]);
