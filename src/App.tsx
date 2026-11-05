@@ -50,6 +50,8 @@ export default function App() {
   const [problem, setProblem] = useState<Problem>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [gps, setGps] = useState<LngLat | null>(null);
+  const [accuracy, setAccuracy] = useState(0);
+  const flyToMe = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [mapsOpen, setMapsOpen] = useState(false);
   const [saved, setSaved] = useState<SavedRoute[]>(() => savedRoutes.list());
@@ -96,6 +98,7 @@ export default function App() {
       async (pos) => {
         const c: LngLat = [pos.coords.longitude, pos.coords.latitude];
         setGps(c);
+        setAccuracy(pos.coords.accuracy);
         if (!apply) return;
         const place: Place = { name: 'Current location', detail: '', coord: c };
         setFrom((f) => f ?? place);
@@ -110,6 +113,55 @@ export default function App() {
   }, []);
 
   useEffect(() => locate(true), [locate]);
+
+  // Once location is allowed, keep the blue dot up to date while the app is open.
+  const watching = gps !== null;
+  useEffect(() => {
+    if (!watching || !('geolocation' in navigator)) return;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGps([pos.coords.longitude, pos.coords.latitude]);
+        setAccuracy(pos.coords.accuracy);
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 5000 },
+    );
+    return () => navigator.geolocation.clearWatch(id);
+  }, [watching]);
+
+  const centerOn = (c: LngLat) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 15), padding: pad, duration: 700 });
+  };
+
+  // The location button: go to where you are (asks for location the first time).
+  const goToMe = () => {
+    if (gps) return centerOn(gps);
+    if (!('geolocation' in navigator)) return setToast('This device cannot share its location.');
+    flyToMe.current = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const c: LngLat = [pos.coords.longitude, pos.coords.latitude];
+        setGps(c);
+        setAccuracy(pos.coords.accuracy);
+      },
+      () => {
+        flyToMe.current = false;
+        setToast('Location is off. Allow it in your phone settings for this site.');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+  useEffect(() => {
+    if (gps && flyToMe.current) {
+      flyToMe.current = false;
+      centerOn(gps);
+    }
+    // centerOn only reads the latest map and padding
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps]);
 
   // --- planning ------------------------------------------------------------
   const end = loop ? from : to;
@@ -256,7 +308,20 @@ export default function App() {
           (window as unknown as { __longcutMap?: unknown }).__longcutMap = m; // handy for testing
         }}
         onSelectRoute={(i) => setActive(i)}
+        me={gps ? { coord: gps, accuracy } : null}
       />
+
+      {view.k !== 'search' && (
+        <button
+          type="button"
+          className="locate-btn"
+          aria-label="Show my location"
+          style={wide ? undefined : { bottom: sheetSize.h + 14 }}
+          onClick={goToMe}
+        >
+          <Icon name="my-location" />
+        </button>
+      )}
 
       <header className="topbar">
         <span className="brand">

@@ -23,6 +23,8 @@ interface Props {
   padding: { top: number; bottom: number; left: number; right: number };
   onReady?: (map: maplibregl.Map) => void;
   onSelectRoute?: (index: number) => void;
+  /** The user's own position (blue dot), with GPS accuracy in meters. */
+  me?: { coord: LngLat; accuracy: number } | null;
 }
 
 const STYLE = 'https://tiles.openfreemap.org/styles/dark';
@@ -33,7 +35,7 @@ function cssVar(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-export default function MapView({ routes, active, start, end, padding, onReady, onSelectRoute }: Props) {
+export default function MapView({ routes, active, start, end, padding, onReady, onSelectRoute, me }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loaded = useRef(false);
@@ -41,6 +43,8 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
   latest.current = { routes, active, start, end, padding };
   const selectRef = useRef(onSelectRoute);
   selectRef.current = onSelectRoute;
+  const meRef = useRef(me);
+  meRef.current = me;
 
   useEffect(() => {
     if (!el.current) return;
@@ -91,6 +95,16 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
           'circle-stroke-width': 3,
         },
       });
+      // your own position: blue dot with a soft accuracy circle, like Google Maps
+      map.addSource('me', { type: 'geojson', data: EMPTY });
+      map.addLayer({
+        id: 'me-accuracy', type: 'circle', source: 'me',
+        paint: { 'circle-color': '#4C8DFF', 'circle-opacity': 0.15, 'circle-stroke-color': '#4C8DFF', 'circle-stroke-opacity': 0.3, 'circle-stroke-width': 1, 'circle-radius': 0 },
+      });
+      map.addLayer({
+        id: 'me', type: 'circle', source: 'me',
+        paint: { 'circle-radius': 7, 'circle-color': '#4C8DFF', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2.5 },
+      });
       // tapping an alternative selects it
       map.on('click', 'alt', (e) => {
         const i = e.features?.[0]?.properties?.i;
@@ -102,6 +116,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
       el.current?.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
       loaded.current = true;
       draw(map, latest.current, true);
+      drawMe(map, meRef.current);
       onReady?.(map);
     });
     return () => {
@@ -125,7 +140,21 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     draw(map, latest.current, refit);
   }, [routes, active, start, end, fitKey]);
 
+  useEffect(() => {
+    if (mapRef.current && loaded.current) drawMe(mapRef.current, me ?? null);
+  }, [me]);
+
   return <div ref={el} className="map" aria-label="Map" />;
+}
+
+function drawMe(map: maplibregl.Map, me: Props['me']) {
+  const src = map.getSource('me') as maplibregl.GeoJSONSource | undefined;
+  if (!src) return;
+  src.setData(me ? { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: me.coord } } : EMPTY);
+  if (!me) return;
+  // meters → pixels: one pixel covers 78271.517·cos(lat) / 2^zoom meters
+  const atZoom0 = me.accuracy / (78271.517 * Math.cos((me.coord[1] * Math.PI) / 180));
+  map.setPaintProperty('me-accuracy', 'circle-radius', ['interpolate', ['exponential', 2], ['zoom'], 0, atZoom0, 22, atZoom0 * 2 ** 22]);
 }
 
 function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, fit: boolean) {

@@ -268,6 +268,18 @@ button:disabled { opacity: 0.35; cursor: default; }
 .maps-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .maps-menu .hint { grid-column: 1 / -1; font-size: 13px; }
 
+/* Go to my location, like the button in Google Maps */
+.locate-btn {
+  position: absolute; z-index: 3;
+  right: var(--gutter-r); bottom: 24px;
+  width: 48px; height: 48px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--bg); color: var(--fg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+.locate-btn:active { color: #4c8dff; }
+
 /* Pick on map */
 .crosshair { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 2; }
 .crosshair .dot { width: 22px; height: 22px; border-width: 4px; box-shadow: 0 0 0 6px rgba(0, 0, 0, 0.35); }
