@@ -74,10 +74,23 @@ export default function App() {
   }, []);
 
   useLayoutEffect(() => {
-    if (!sheet.current) return;
-    const ro = new ResizeObserver(([e]) => setSheetSize({ w: e.contentRect.width, h: e.target.getBoundingClientRect().height }));
-    ro.observe(sheet.current);
-    return () => ro.disconnect();
+    const el = sheet.current;
+    if (!el) return;
+    // h = how much of the screen the panel covers, measured from its top edge to the
+    // bottom of the app, so padding for the phone's home bar is included
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      const bottom = el.parentElement?.getBoundingClientRect().bottom ?? innerHeight;
+      setSheetSize({ w: r.width, h: Math.max(0, bottom - r.top) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el, { box: 'border-box' });
+    addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      removeEventListener('resize', measure);
+    };
   }, [view.k]);
 
   // close the Garmin and Maps panels when switching screens or routes
@@ -316,7 +329,7 @@ export default function App() {
           type="button"
           className="locate-btn"
           aria-label="Show my location"
-          style={wide ? undefined : { bottom: sheetSize.h + 14 }}
+          style={wide ? undefined : { bottom: sheetSize.h + 12 }}
           onClick={goToMe}
         >
           <Icon name="my-location" />
