@@ -76,16 +76,21 @@ function loopTemplate(a: LngLat, heading: number, label: string): Template {
 
 function templates(req: PlanRequest, isLoop: boolean): Template[] {
   const { start: a, end: b } = req;
+  // "Again" asks for a new set: each variation moves the via points elsewhere.
+  const k = req.variation ?? 0;
   if (isLoop) {
-    return [0, 90, 180, 270].map((d) => loopTemplate(a, (d * Math.PI) / 180, `loop ${d}°`));
+    const turn = (k * 37) % 90; // degrees
+    return [0, 90, 180, 270].map((d) => loopTemplate(a, ((d + turn) * Math.PI) / 180, `loop ${d + turn}°`));
   }
   const P = Math.PI;
+  const shift = [0, 0.3, -0.3, 0.55, -0.55, 0.15, -0.15][k % 7];
+  const at = (ts: number[]) => ts.map((t) => Math.min(P - 0.15, Math.max(0.15, t + shift)));
   // One via point alone tends to produce out-and-back routes, so use 2 or 3.
   return [
-    ellipseTemplate(a, b, 1, [(2 * P) / 3, P / 3], 'left · 2 vias'),
-    ellipseTemplate(a, b, -1, [(2 * P) / 3, P / 3], 'right · 2 vias'),
-    ellipseTemplate(a, b, 1, [(5 * P) / 6, P / 2, P / 6], 'left · 3 vias'),
-    ellipseTemplate(a, b, -1, [(5 * P) / 6, P / 2, P / 6], 'right · 3 vias'),
+    ellipseTemplate(a, b, 1, at([(2 * P) / 3, P / 3]), 'left · 2 vias'),
+    ellipseTemplate(a, b, -1, at([(2 * P) / 3, P / 3]), 'right · 2 vias'),
+    ellipseTemplate(a, b, 1, at([(5 * P) / 6, P / 2, P / 6]), 'left · 3 vias'),
+    ellipseTemplate(a, b, -1, at([(5 * P) / 6, P / 2, P / 6]), 'right · 3 vias'),
   ];
 }
 

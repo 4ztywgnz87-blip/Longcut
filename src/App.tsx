@@ -1,122 +1,593 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type * as maplibregl from 'maplibre-gl';
+import MapView from './components/MapView';
+import type { MapRoute } from './components/MapView';
+import PlaceSearch from './components/PlaceSearch';
+import ElevationSpark from './components/ElevationSpark';
+import { Icon } from './components/Icon';
+import type { Place } from './lib/geocode';
+import { reverseGeocode } from './lib/geocode';
+import { plan } from './lib/planService';
+import { savedRoutes, settings } from './lib/storage';
+import type { SavedRoute } from './lib/storage';
+import { exportGpx } from './lib/share';
+import { gpxFileName, toGpx } from './core/gpx';
+import { appleMapsUrl, googleMapsUrl } from './core/mapLinks';
+import type { LngLat } from './core/geo';
+import type { PlannedRoute } from './core/types';
 
-function App() {
-  const [count, setCount] = useState(0)
+type Field = 'from' | 'to';
+type View =
+  | { k: 'edit' }
+  | { k: 'search'; field: Field }
+  | { k: 'pick'; field: Field }
+  | { k: 'planning' }
+  | { k: 'results' }
+  | { k: 'saved' }
+  | { k: 'savedRoute'; route: SavedRoute };
+
+type Problem = { kind: 'too-short'; shortestKm: number } | { kind: 'message'; text: string } | null;
+
+const MIN_KM = 1;
+const MAX_KM = 100;
+const fmtKm = (m: number) => (m / 1000).toFixed(2);
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
+export default function App() {
+  const initial = settings.get();
+  const [view, setView] = useState<View>({ k: 'edit' });
+  const [from, setFrom] = useState<Place | null>(null);
+  const [to, setTo] = useState<Place | null>(null);
+  const [loop, setLoop] = useState(false);
+  const [km, setKm] = useState(initial.distanceKm);
+  const [kmText, setKmText] = useState(String(initial.distanceKm));
+  const [preferGreen, setPreferGreen] = useState(initial.preferGreen);
+  const [unpavedOk, setUnpavedOk] = useState(initial.unpavedOk);
+  const [routes, setRoutes] = useState<PlannedRoute[]>([]);
+  const [active, setActive] = useState(0);
+  const [variation, setVariation] = useState(0);
+  const [problem, setProblem] = useState<Problem>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [gps, setGps] = useState<LngLat | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [mapsOpen, setMapsOpen] = useState(false);
+  const [saved, setSaved] = useState<SavedRoute[]>(() => savedRoutes.list());
+  const [savedIds, setSavedIds] = useState<Record<number, string>>({});
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const sheet = useRef<HTMLDivElement>(null);
+  const [sheetSize, setSheetSize] = useState({ w: 0, h: 0 });
+  const [wide, setWide] = useState(() => matchMedia('(min-width: 900px)').matches);
+
+  // --- settings & layout ---------------------------------------------------
+  useEffect(() => {
+    settings.set({ distanceKm: km, preferGreen, unpavedOk });
+  }, [km, preferGreen, unpavedOk]);
+
+  useEffect(() => {
+    const mq = matchMedia('(min-width: 900px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!sheet.current) return;
+    const ro = new ResizeObserver(([e]) => setSheetSize({ w: e.contentRect.width, h: e.target.getBoundingClientRect().height }));
+    ro.observe(sheet.current);
+    return () => ro.disconnect();
+  }, [view.k]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // --- current location ----------------------------------------------------
+  const locate = useCallback((apply: boolean) => {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const c: LngLat = [pos.coords.longitude, pos.coords.latitude];
+        setGps(c);
+        if (!apply) return;
+        const place: Place = { name: 'Current location', detail: '', coord: c };
+        setFrom((f) => f ?? place);
+        const named = await reverseGeocode(c);
+        setFrom((f) => (f && f.name === 'Current location' && f.coord === c ? { ...place, detail: named.name } : f));
+      },
+      () => {
+        if (apply) setToast('Location is off. Search for your start instead.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+    );
+  }, []);
+
+  useEffect(() => locate(true), [locate]);
+
+  // --- planning ------------------------------------------------------------
+  const end = loop ? from : to;
+
+  const run = async (nextVariation: number) => {
+    setProblem(null);
+    if (!from) return setProblem({ kind: 'message', text: 'Choose where you start.' });
+    if (!end) return setProblem({ kind: 'message', text: 'Choose where you finish, or switch on Loop.' });
+    if (!(km >= MIN_KM && km <= MAX_KM)) return setProblem({ kind: 'message', text: `Distance must be between ${MIN_KM} and ${MAX_KM} km.` });
+    setView({ k: 'planning' });
+    setVariation(nextVariation);
+    const t0 = Date.now();
+    const tick = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 250);
+    try {
+      const r = await plan({
+        start: from.coord,
+        end: end.coord,
+        distanceKm: km,
+        prefs: { unpavedOk, preferGreen },
+        variation: nextVariation,
+      });
+      if (r.ok) {
+        setRoutes(r.routes);
+        setActive(0);
+        setSavedIds({});
+        setView({ k: 'results' });
+      } else {
+        setView({ k: 'edit' });
+        setProblem(
+          r.reason === 'too-short'
+            ? { kind: 'too-short', shortestKm: r.shortestKm }
+            : { kind: 'message', text: 'No route of this length found around these points. Try a slightly different distance or a nearby start.' },
+        );
+      }
+    } catch {
+      setView({ k: 'edit' });
+      setProblem({ kind: 'message', text: 'The route service did not answer. Check your connection and try again in a moment.' });
+    } finally {
+      clearInterval(tick);
+      setElapsed(0);
+    }
+  };
+
+  // --- distance input ------------------------------------------------------
+  const commitKm = (v: number) => {
+    const clamped = Math.min(MAX_KM, Math.max(MIN_KM, Math.round(v * 10) / 10));
+    setKm(clamped);
+    setKmText(String(clamped));
+    setProblem(null);
+  };
+
+  // --- export & save -------------------------------------------------------
+  const routeName = (target: Place | null, meters: number) =>
+    loop || !target ? `LONGCUT ${fmtKm(meters)} km loop` : `LONGCUT ${fmtKm(meters)} km to ${target.name}`;
+
+  const doExport = async (coords: LngLat[], elevations: (number | null)[], meters: number, target: Place | null) => {
+    const name = routeName(target, meters);
+    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations));
+    if (outcome === 'downloaded') setToast('GPX saved. Import it in Garmin Connect as a course.');
+    if (outcome === 'shared') setToast('GPX shared.');
+  };
+
+  const saveActive = () => {
+    const r = routes[active];
+    if (!r || !from || !end) return;
+    if (savedIds[active]) {
+      setSaved(savedRoutes.remove(savedIds[active]));
+      setSavedIds(({ [active]: _, ...rest }) => rest);
+      setToast('Removed from saved routes.');
+      return;
+    }
+    // "Current location" means nothing later on: keep the street name instead
+    const named = (p: Place) => (p.name === 'Current location' && p.detail ? { ...p, name: p.detail, detail: '' } : p);
+    const s = savedRoutes.add({
+      from: named(from),
+      to: named(end),
+      requestedKm: km,
+      lengthM: r.stats.length,
+      ascent: r.stats.ascent,
+      coords: r.coords,
+      elevations: r.elevations,
+    });
+    if (!s) return setToast('Could not save: storage on this device is full or blocked.');
+    setSaved(savedRoutes.list());
+    setSavedIds((ids) => ({ ...ids, [active]: s.id }));
+    setToast('Saved. Find it under Saved.');
+  };
+
+  // --- pick on map ---------------------------------------------------------
+  const confirmPick = async (field: Field) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const c = map.getCenter();
+    const place = await reverseGeocode([c.lng, c.lat]);
+    if (field === 'from') setFrom(place);
+    else {
+      setTo(place);
+      setLoop(false);
+    }
+    setView({ k: 'edit' });
+  };
+
+  const choose = (field: Field, p: Place) => {
+    if (field === 'from') setFrom(p);
+    else {
+      setTo(p);
+      setLoop(false);
+    }
+    setProblem(null);
+    setView({ k: 'edit' });
+  };
+
+  // --- map content ---------------------------------------------------------
+  let mapRoutes: MapRoute[] = [];
+  let mapStart = from?.coord ?? null;
+  let mapEnd = end?.coord ?? null;
+  if (view.k === 'results') mapRoutes = routes;
+  if (view.k === 'savedRoute') {
+    mapRoutes = [{ coords: view.route.coords }];
+    mapStart = view.route.from.coord;
+    mapEnd = view.route.to.coord;
+  }
+  const pad = wide
+    ? { top: 48, bottom: 48, left: sheetSize.w + 64, right: 48 }
+    : { top: 72, bottom: sheetSize.h + 24, left: 32, right: 32 };
+
+  const r = routes[active];
+  const isLoopNow = loop || (from && to && from.coord[0] === to.coord[0] && from.coord[1] === to.coord[1]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+    <div className={`app view-${view.k}`}>
+      <MapView
+        routes={mapRoutes}
+        active={view.k === 'results' ? active : 0}
+        start={view.k === 'pick' ? null : mapStart}
+        end={view.k === 'pick' ? null : mapEnd}
+        padding={pad}
+        onReady={(m) => {
+          mapRef.current = m;
+          (window as unknown as { __longcutMap?: unknown }).__longcutMap = m; // handy for testing
+        }}
+        onSelectRoute={(i) => setActive(i)}
+      />
+
+      <header className="topbar">
+        <span className="brand">Longcut</span>
+        {(view.k === 'edit' || view.k === 'results') && (
+          <button type="button" className="pill-btn" onClick={() => setView({ k: 'saved' })}>
+            <Icon name="list" size={18} /> Saved{saved.length ? ` · ${saved.length}` : ''}
+          </button>
+        )}
+      </header>
+
+      {view.k === 'pick' && (
+        <>
+          <div className="crosshair" aria-hidden="true">
+            <span className={`dot ${view.field === 'from' ? 'dot-start' : 'dot-end'}`} />
+          </div>
+          <div className="sheet pick-sheet" ref={sheet}>
+            <p className="pick-text">Move the map until the dot is on your {view.field === 'from' ? 'start' : 'finish'}.</p>
+            <div className="row-2">
+              <button type="button" className="btn ghost" onClick={() => setView({ k: 'search', field: view.field })}>
+                Cancel
+              </button>
+              <button type="button" className="btn primary" onClick={() => confirmPick(view.field)}>
+                Set {view.field === 'from' ? 'start' : 'finish'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view.k === 'search' && (
+        <PlaceSearch
+          title={view.field === 'from' ? 'Start' : 'Finish'}
+          near={gps ?? from?.coord ?? null}
+          canUseLocation={'geolocation' in navigator}
+          onPick={(p) => choose(view.field, p)}
+          onUseLocation={() => {
+            if (gps) choose(view.field, { name: 'Current location', detail: '', coord: gps });
+            else {
+              if (view.field === 'from') setFrom(null);
+              locate(view.field === 'from');
+              setView({ k: 'edit' });
+            }
+          }}
+          onPickOnMap={() => setView({ k: 'pick', field: view.field })}
+          onClose={() => setView({ k: 'edit' })}
+        />
+      )}
+
+      {view.k === 'edit' && (
+        <form
+          className="sheet edit-sheet"
+          ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(0);
+          }}
+        >
+          <div className="fields">
+            <div className="field-stack">
+              <button type="button" className="field" onClick={() => setView({ k: 'search', field: 'from' })}>
+                <span className="dot dot-start" aria-hidden="true" />
+                <span className="field-text">
+                  <span className="field-label">Start</span>
+                  <span className={`field-value ${from ? '' : 'empty'}`}>{from ? from.name : 'Choose start'}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="field"
+                onClick={() => (loop ? setLoop(false) : setView({ k: 'search', field: 'to' }))}
+              >
+                <span className="dot dot-end" aria-hidden="true" />
+                <span className="field-text">
+                  <span className="field-label">Finish</span>
+                  <span className={`field-value ${to || loop ? '' : 'empty'}`}>
+                    {loop ? 'Back to start' : to ? to.name : 'Choose finish'}
+                  </span>
+                </span>
+              </button>
+            </div>
+            <div className="field-actions">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Swap start and finish"
+                disabled={loop || !from || !to}
+                onClick={() => {
+                  setFrom(to);
+                  setTo(from);
+                }}
+              >
+                <Icon name="swap" />
+              </button>
+              <button
+                type="button"
+                className={`icon-btn toggle ${loop ? 'on' : ''}`}
+                aria-label="Loop: finish where you start"
+                aria-pressed={loop}
+                onClick={() => {
+                  setLoop(!loop);
+                  setProblem(null);
+                }}
+              >
+                <Icon name="loop" />
+              </button>
+            </div>
+          </div>
+
+          <div className="distance-row">
+            <label htmlFor="km" className="field-label">
+              Distance
+            </label>
+            <div className="stepper">
+              <button type="button" className="step" aria-label="1 km less" onClick={() => commitKm(Math.ceil(km) - 1)}>
+                <Icon name="minus" />
+              </button>
+              <div className="km-box">
+                <input
+                  id="km"
+                  className="km-input"
+                  inputMode="decimal"
+                  value={kmText}
+                  onChange={(e) => {
+                    setKmText(e.target.value);
+                    const v = parseFloat(e.target.value.replace(',', '.'));
+                    if (!Number.isNaN(v)) setKm(v);
+                  }}
+                  onBlur={() => commitKm(parseFloat(kmText.replace(',', '.')) || km)}
+                  aria-describedby="km-unit"
+                />
+                <span id="km-unit" className="km-unit">km</span>
+              </div>
+              <button type="button" className="step" aria-label="1 km more" onClick={() => commitKm(Math.floor(km) + 1)}>
+                <Icon name="plus" />
+              </button>
+            </div>
+          </div>
+
+          <div className="chips" role="group" aria-label="Route preferences">
+            <button type="button" className={`chip ${preferGreen ? 'on' : ''}`} aria-pressed={preferGreen} onClick={() => setPreferGreen(!preferGreen)}>
+              Prefer green
+            </button>
+            <button type="button" className={`chip ${unpavedOk ? 'on' : ''}`} aria-pressed={unpavedOk} onClick={() => setUnpavedOk(!unpavedOk)}>
+              Unpaved OK
+            </button>
+          </div>
+
+          {problem && (
+            <div className="problem" role="alert">
+              {problem.kind === 'too-short' ? (
+                <>
+                  <p>
+                    The shortest route is already <b>{problem.shortestKm.toFixed(1)} km</b>, longer than {km} km.
+                  </p>
+                  <button type="button" className="btn small" onClick={() => commitKm(Math.ceil(problem.shortestKm * 1.02))}>
+                    Use {Math.ceil(problem.shortestKm * 1.02)} km
+                  </button>
+                </>
+              ) : (
+                <p>{problem.text}</p>
+              )}
+            </div>
+          )}
+
+          <button type="submit" className="btn primary big">
+            Plan {km} km {isLoopNow ? 'loop' : 'route'}
+          </button>
+        </form>
+      )}
+
+      {view.k === 'planning' && (
+        <div className="sheet planning-sheet" ref={sheet} role="status" aria-live="polite">
+          <div className="progress" aria-hidden="true">
+            <span />
+          </div>
+          <p className="planning-title">Finding your longcut</p>
+          <p className="hint">
+            Trying detours for {km} km{elapsed >= 3 ? ` · ${elapsed}s` : ''}
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      )}
 
-      <div className="ticks"></div>
+      {view.k === 'results' && r && (
+        <div className="sheet results-sheet" ref={sheet}>
+          <div className="sheet-head">
+            <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
+              <Icon name="back" size={18} /> Edit
+            </button>
+            <div className="tabs" role="tablist" aria-label="Routes">
+              {routes.map((x, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === active}
+                  className={`tab ${i === active ? 'on' : ''}`}
+                  onClick={() => setActive(i)}
+                >
+                  {fmtKm(x.stats.length)}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
+          <div className="headline">
+            <div className="big-km">
+              <b>{fmtKm(r.stats.length)}</b>
+              <span>km</span>
+            </div>
+            <span className={`dev ${Math.abs(r.deviation) <= 0.03 ? 'good' : 'warn'}`}>
+              {r.deviation >= 0 ? '+' : '−'}
+              {Math.abs(r.deviation * 100).toFixed(1)}% vs {km} km
+            </span>
+          </div>
+
+          <dl className="stats">
+            <div>
+              <dt>Busy</dt>
+              <dd className={r.stats.busyShare > 0.05 ? 'warn' : ''}>{pct(r.stats.busyShare)}</dd>
+            </div>
+            <div>
+              <dt>Unpaved</dt>
+              <dd>{pct(r.stats.unpavedShare)}</dd>
+            </div>
+            <div>
+              <dt>Twice</dt>
+              <dd>{pct(r.stats.overlapShare)}</dd>
+            </div>
+            <div>
+              <dt>Climb</dt>
+              <dd>{r.stats.ascent} m</dd>
+            </div>
+          </dl>
+          <ElevationSpark coords={r.coords} elevations={r.elevations} />
+
+          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end)}>
+            <Icon name="download" /> Send GPX to Garmin
+          </button>
+          <div className="row-3">
+            <button type="button" className={`btn ghost ${savedIds[active] ? 'on' : ''}`} aria-pressed={!!savedIds[active]} onClick={saveActive}>
+              <Icon name="bookmark" /> {savedIds[active] ? 'Saved' : 'Save'}
+            </button>
+            <button type="button" className="btn ghost" aria-expanded={mapsOpen} onClick={() => setMapsOpen(!mapsOpen)}>
+              <Icon name="map" /> Maps
+            </button>
+            <button type="button" className="btn ghost" onClick={() => run(variation + 1)}>
+              <Icon name="again" /> Again
+            </button>
+          </div>
+          {mapsOpen && (
+            <div className="maps-menu">
+              <a className="btn ghost" href={googleMapsUrl(r.coords)} target="_blank" rel="noreferrer">
+                Google Maps
               </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
+              <a className="btn ghost" href={appleMapsUrl(r.coords)} target="_blank" rel="noreferrer">
+                Apple Maps
               </a>
-            </li>
-          </ul>
+              <p className="hint">Maps apps take only a few points, so the route there is close but not exact. Use GPX for the exact route.</p>
+            </div>
+          )}
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      {view.k === 'saved' && (
+        <div className="sheet saved-sheet" ref={sheet}>
+          <div className="sheet-head">
+            <button type="button" className="link-btn" onClick={() => setView(routes.length ? { k: 'results' } : { k: 'edit' })}>
+              <Icon name="back" size={18} /> Back
+            </button>
+            <h2 className="sheet-title">Saved routes</h2>
+          </div>
+          {saved.length === 0 ? (
+            <p className="hint">Routes you save show up here, so you can send them to your watch again later.</p>
+          ) : (
+            <ul className="saved-list">
+              {saved.map((s) => (
+                <li key={s.id}>
+                  <button type="button" className="saved-item" onClick={() => setView({ k: 'savedRoute', route: s })}>
+                    <span className="saved-km">{fmtKm(s.lengthM)}</span>
+                    <span className="saved-text">
+                      <span className="place-name">
+                        {s.from.name} → {s.from.coord[0] === s.to.coord[0] && s.from.coord[1] === s.to.coord[1] ? 'loop' : s.to.name}
+                      </span>
+                      <span className="place-detail">{new Date(s.savedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {view.k === 'savedRoute' && (
+        <div className="sheet results-sheet" ref={sheet}>
+          <div className="sheet-head">
+            <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>
+              <Icon name="back" size={18} /> Saved
+            </button>
+          </div>
+          <div className="headline">
+            <div className="big-km">
+              <b>{fmtKm(view.route.lengthM)}</b>
+              <span>km</span>
+            </div>
+            <span className="dev">
+              {view.route.from.name} → {view.route.to.name}
+            </span>
+          </div>
+          <ElevationSpark coords={view.route.coords} elevations={view.route.elevations} />
+          <button
+            type="button"
+            className="btn primary big"
+            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to)}
+          >
+            <Icon name="download" /> Send GPX to Garmin
+          </button>
+          <div className="row-2">
+            <a className="btn ghost" href={googleMapsUrl(view.route.coords)} target="_blank" rel="noreferrer">
+              <Icon name="map" /> Google Maps
+            </a>
+            <button
+              type="button"
+              className="btn ghost danger"
+              onClick={() => {
+                setSaved(savedRoutes.remove(view.route.id));
+                setView({ k: 'saved' });
+                setToast('Route deleted.');
+              }}
+            >
+              <Icon name="trash" /> Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
 }
-
-export default App

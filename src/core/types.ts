@@ -56,6 +56,8 @@ export interface PlanRequest {
   end: LngLat;
   distanceKm: number;
   prefs: PlanPrefs;
+  /** 0 for the first plan; 1, 2, … for "again" to get different routes. */
+  variation?: number;
 }
 
 export interface RouteStats {
