@@ -146,6 +146,7 @@ export function toRawRoute(json: OrsResponse): RawRoute {
       length: haversine(a, b),
       road: ORS_ROADS[waytype[i]] ?? 'unknown',
       unpaved: ORS_UNPAVED.has(surface[i]),
+      noise: 0,
     });
   }
   return { segments, waypointSegIndex: f.properties.way_points };

@@ -3,7 +3,7 @@
 # the planner, so these costs only decide WHICH roads the route uses.
 #
 # Costs are "how much one meter here feels like": 1.0 = ideal.
-# Options can be overridden per request with profile:<name>=<value>.
+# The app uploads one copy of this profile per combination of options.
 
 ---context:global
 
@@ -53,6 +53,13 @@ assign trafficcost
   else if estimated_traffic_class=3 then 0.2
   else 0
 
+# Paths right next to a motorway or busy road are allowed but less pleasant.
+assign noisecost
+  if estimated_noise_class=6 then 0.5
+  else if estimated_noise_class=5 then 0.35
+  else if estimated_noise_class=4 then 0.15
+  else 0
+
 assign unpavedcost
   if not avoid_unpaved then 0
   else if not isunpaved then 0
@@ -72,7 +79,7 @@ assign routebonus if isroute then -0.08 else 0
 
 assign costfactor
   if not footaccess then 100000
-  else max 0.75 ( add roadcost add trafficcost add unpavedcost add greenbonus routebonus )
+  else max 0.75 ( add roadcost add trafficcost add noisecost add unpavedcost add greenbonus routebonus )
 
 assign turncost 0
 assign initialcost 0

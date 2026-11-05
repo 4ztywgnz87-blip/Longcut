@@ -163,6 +163,12 @@ function isUnpaved(t: Record<string, string>): boolean {
   return false;
 }
 
+/** BRouter estimates noise from nearby roads (1 = quiet .. 6 = very loud). */
+function noiseLevel(t: Record<string, string>): number {
+  const n = Number(t.estimated_noise_class ?? 0);
+  return n >= 6 ? 1 : n === 5 ? 0.7 : n === 4 ? 0.3 : 0;
+}
+
 /**
  * BRouter returns the geometry plus a table of "messages": one row per stretch
  * of road, ending at a geometry point, with that road's OSM tags.
@@ -193,6 +199,7 @@ export function toRawRoute(json: BRouterResponse): RawRoute {
       length: haversine(a, b),
       road: roadKind(tags),
       unpaved: isUnpaved(tags),
+      noise: noiseLevel(tags),
     });
     const end = ends[m];
     if (end && Math.abs(end.lon - b[0]) < 2e-6 && Math.abs(end.lat - b[1]) < 2e-6) m++;

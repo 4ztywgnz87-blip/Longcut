@@ -112,6 +112,7 @@ function scoreRoute(segments: Segment[], target: number, req: PlanRequest) {
     devPenalty +
     stats.overlapShare * 4 +
     stats.busyShare * 3 +
+    stats.noisyShare * 1.5 +
     (req.prefs.unpavedOk ? 0 : stats.unpavedShare * 0.5);
   return { stats, dev, score };
 }

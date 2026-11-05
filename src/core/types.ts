@@ -20,6 +20,8 @@ export interface Segment {
   length: number; // meters
   road: RoadKind;
   unpaved: boolean;
+  /** 0 = quiet, 1 = right next to a motorway or very busy road. */
+  noise: number;
 }
 
 /** A route as returned by a router, already split into segments. */
@@ -60,6 +62,7 @@ export interface RouteStats {
   length: number; // meters
   overlapShare: number; // 0..1, share of length run more than once
   busyShare: number; // 0..1, share on major roads
+  noisyShare: number; // 0..1, share next to loud roads (weighted)
   unpavedShare: number; // 0..1
   ascent: number; // meters
 }

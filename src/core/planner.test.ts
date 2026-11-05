@@ -18,7 +18,7 @@ class FakeRouter implements Router {
       for (let k = 0; k < steps; k++) {
         const p = (t: number): LngLat => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         const from = p(k / steps), to = p((k + 1) / steps);
-        segments.push({ from, to, ele: 10, length: haversine(from, to) * 1.25, road: 'street', unpaved: false });
+        segments.push({ from, to, ele: 10, length: haversine(from, to) * 1.25, road: 'street', unpaved: false, noise: 0 });
       }
       waypointSegIndex.push(segments.length);
     }
@@ -31,7 +31,7 @@ const parents: LngLat = [4.143, 51.1655]; // ~4.5 km straight line
 const prefs = { unpavedOk: false, preferGreen: false };
 
 const seg = (from: LngLat, to: LngLat, road: RoadKind = 'street'): Segment => ({
-  from, to, ele: null, length: haversine(from, to), road, unpaved: false,
+  from, to, ele: null, length: haversine(from, to), road, unpaved: false, noise: 0,
 });
 
 describe('removeSpurs', () => {

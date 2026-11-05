@@ -15,7 +15,7 @@ interface Result {
 }
 
 async function main() {
-  const results = JSON.parse(await readFile('eval/out/results.json', 'utf8')) as Result[];
+  const results = JSON.parse(await readFile(process.argv[2] ?? 'eval/out/results.json', 'utf8')) as Result[];
   await mkdir('eval/out/img', { recursive: true });
   const server = spawn('python3', ['-m', 'http.server', '8765', '--bind', '127.0.0.1'], { stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 800));

@@ -30,6 +30,7 @@ export function measure(segments: Segment[]): RouteStats {
   let length = 0;
   let busy = 0;
   let unpaved = 0;
+  let noisy = 0;
   const seen = new Map<string, number>();
   let repeated = 0;
 
@@ -38,6 +39,7 @@ export function measure(segments: Segment[]): RouteStats {
     if (s.road === 'main') busy += s.length;
     else if (s.road === 'secondary') busy += s.length * 0.5;
     if (s.unpaved) unpaved += s.length;
+    noisy += s.length * s.noise;
     const k = segmentKey(s);
     const n = seen.get(k) ?? 0;
     if (n > 0) repeated += s.length;
@@ -48,6 +50,7 @@ export function measure(segments: Segment[]): RouteStats {
     length,
     overlapShare: length ? repeated / length : 0,
     busyShare: length ? busy / length : 0,
+    noisyShare: length ? noisy / length : 0,
     unpavedShare: length ? unpaved / length : 0,
     ascent: ascent(segments),
   };
