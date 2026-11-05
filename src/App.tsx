@@ -18,6 +18,7 @@ import { routeFileName } from './core/gpx';
 import { appleMapsUrl, googleMapsUrl } from './core/mapLinks';
 import type { LngLat } from './core/geo';
 import type { PlannedRoute } from './core/types';
+import { RouterError } from './core/types';
 
 // Garmin's FIT library is large: load it only once a route is on screen.
 let fitLib: Promise<typeof import('./core/fit')> | null = null;
@@ -54,6 +55,9 @@ export default function App() {
   const [optionsOpen, setOptionsOpen] = useState(false);
   // panels can be swiped down to see more of the map
   const [collapsed, setCollapsed] = useState(false);
+  const [dragY, setDragY] = useState<number | null>(null);
+  const sheetDrag: React.CSSProperties | undefined =
+    dragY == null ? undefined : { transform: `translateY(${dragY}px)`, transition: 'none' };
   const [routes, setRoutes] = useState<PlannedRoute[]>([]);
   const [active, setActive] = useState(0);
   const [variation, setVariation] = useState(0);
@@ -223,12 +227,18 @@ export default function App() {
         setProblem(
           r.reason === 'too-short'
             ? { kind: 'too-short', shortestKm: r.shortestKm }
-            : { kind: 'message', text: 'No route of this length found around these points. Try a slightly different distance or a nearby start.' },
+            : r.reason === 'busy'
+              ? { kind: 'message', text: 'The route server is busy right now. Wait a minute and try again.' }
+              : { kind: 'message', text: 'No route of this length found around these points. Try a slightly different distance or a nearby start.' },
         );
       }
-    } catch {
+    } catch (e) {
       setView({ k: 'edit' });
-      setProblem({ kind: 'message', text: 'The route service did not answer. Check your connection and try again in a moment.' });
+      const busy = e instanceof RouterError && e.busy;
+      setProblem({
+        kind: 'message',
+        text: busy ? 'The route server is busy right now. Wait a minute and try again.' : 'The route service did not answer. Check your connection and try again in a moment.',
+      });
     } finally {
       clearInterval(tick);
       setElapsed(0);
@@ -403,13 +413,14 @@ export default function App() {
       {view.k === 'edit' && (
         <form
           className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''}`}
+          style={sheetDrag}
           ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
           onSubmit={(e) => {
             e.preventDefault();
             run(0);
           }}
         >
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           {collapsed && (
             <button type="button" className="sheet-summary" onClick={() => setCollapsed(false)}>
               <span className="dot dot-start" aria-hidden="true" />
@@ -574,15 +585,21 @@ export default function App() {
         <div className="sheet planning-sheet" ref={sheet} role="status" aria-live="polite">
           <PlanningAnimation />
           <p className="planning-title">Finding your longcut</p>
-          <p className="hint planning-step" key={elapsed < 1 ? 1 : elapsed < 4 ? 2 : 3}>
-            {elapsed < 1 ? 'Measuring the direct way' : elapsed < 4 ? `Trying detours for ${km} km` : 'Picking the quietest ones'}
+          <p className="hint planning-step" key={elapsed < 1 ? 1 : elapsed < 4 ? 2 : elapsed < 10 ? 3 : 4}>
+            {elapsed < 1
+              ? 'Measuring the direct way'
+              : elapsed < 4
+                ? `Trying detours for ${km} km`
+                : elapsed < 10
+                  ? 'Picking the quietest ones'
+                  : 'The route server is slow today, still trying…'}
           </p>
         </div>
       )}
 
       {view.k === 'results' && r && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} ref={sheet}>
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet}>
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
               <Icon name="back" size={18} /> Edit
@@ -691,8 +708,8 @@ export default function App() {
       )}
 
       {view.k === 'savedRoute' && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} ref={sheet}>
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} />
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet}>
+          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>
               <Icon name="back" size={18} /> Saved

@@ -143,10 +143,11 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 
 /* Panel body and grab handle (swipe down to hide the panel) */
+.sheet { transition: transform 0.22s ease; }
 .sheet-body { display: grid; gap: inherit; }
 .sheet-handle {
   display: flex; justify-content: center; align-items: center;
-  height: 22px; margin: -8px 0 -4px;
+  height: 30px; margin: -12px 0 -6px;
   border: 0; background: none; padding: 0;
   cursor: grab; touch-action: none;
 }
@@ -464,8 +465,8 @@ button:disabled { opacity: 0.35; cursor: default; }
    like Liquid Glass on iPhone. Inner surfaces become light tints of the glass. */
 .sheet, .brand, .pill-btn, .locate-btn {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
-  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+  backdrop-filter: blur(6px) saturate(140%);
   border-color: var(--glass-edge);
 }
 .sheet {

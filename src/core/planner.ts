@@ -13,6 +13,8 @@ import type { PlanRequest, PlanResult, PlannedRoute, RouteOptions, Router, Segme
 /** Accepted length window, relative to the requested distance. */
 export const WINDOW = { ideal: [0, 0.03] as const, max: [-0.05, 0.05] as const, aim: 0.015 };
 const MAX_STEPS = 7;
+/** After this long, stop refining and show the best routes found so far. */
+const TIME_BUDGET_MS = 15_000;
 const LOOP_THRESHOLD_M = 250;
 /** Two alternatives sharing more than this share of road count as "the same route". */
 const MAX_SIMILARITY = 0.7;
@@ -122,6 +124,25 @@ function scoreRoute(segments: Segment[], target: number, req: PlanRequest) {
   return { stats, dev, score };
 }
 
+/** Resolves with the result, or with null once the deadline has passed. */
+function beforeDeadline<T>(p: Promise<T>, deadline: number): Promise<T | null> {
+  const left = deadline - Date.now();
+  if (left <= 0) return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(null), left);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 /** Try one template: adjust its size until the route length fits. */
 async function fitTemplate(
   t: Template,
@@ -130,6 +151,8 @@ async function fitTemplate(
   ro: RouteOptions,
   target: number,
   initialSize: number,
+  deadline: number,
+  onBusy: () => void,
 ): Promise<Attempt | null> {
   const aim = target * (1 + WINDOW.aim);
   let size = Math.max(initialSize, t.minSize);
@@ -140,16 +163,22 @@ async function fitTemplate(
   let previous: number | null = null;
   const closeness = (len: number) => Math.abs(deviation(len, aim));
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  for (let step = 0; step < MAX_STEPS && Date.now() < deadline; step++) {
     let segments: Segment[];
     try {
-      const raw = await router.route([req.start, ...t.vias(size, variant), req.end], ro);
+      const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro), deadline);
+      if (!raw) break; // out of time: keep the best try so far
       segments = removeSpurs(raw.segments);
     } catch (e) {
       if (e instanceof RouterError && e.noRoute) {
         // a via point landed somewhere unroutable (water, closed area): shift the points
         variant++;
         continue;
+      }
+      if (e instanceof RouterError && e.busy) {
+        // the server keeps refusing: keep what this template found so far
+        onBusy();
+        break;
       }
       throw e;
     }
@@ -218,9 +247,11 @@ export async function planRoutes(
 
   // 2. Try every template in parallel, each adjusting its own size.
   const initial = isLoop ? target / detour : Math.max(crow * 1.05, target / detour);
+  const deadline = Date.now() + TIME_BUDGET_MS;
+  let busy = false;
   const found = await Promise.all(
     templates(req, isLoop).map(async (t) => {
-      const a = await fitTemplate(t, req, router, ro, target, initial);
+      const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true));
       return a ? toCandidate(a.segments, target, req, t.label) : null;
     }),
   );
@@ -236,6 +267,7 @@ export async function planRoutes(
     if (chosen.length === 3) break;
   }
   if (!chosen.length) {
+    if (busy) return { ok: false, reason: 'busy' };
     return { ok: false, reason: 'no-route', message: 'Could not find a route of this length here.' };
   }
   return { ok: true, shortestKm, routes: chosen.map((c) => c.route) };

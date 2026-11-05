@@ -88,8 +88,10 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Redraw on any change; fit the view when the routes, points or the panel size change.
-  const padKey = `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}`;
+  // Redraw on any change. Fit the view when the routes or points change, and when the
+  // panel changes size while a route is shown (so the route stays centred). Without a
+  // route the map stays put, so hiding the panel doesn't make it jump.
+  const padKey = routes.length ? `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}` : '';
   const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${end}|${padKey}`;
   const lastFit = useRef('');
   useEffect(() => {

@@ -51,9 +51,12 @@ export interface Router {
 export class RouterError extends Error {
   /** true when the router could not find a road near a point, or no path at all. */
   readonly noRoute: boolean;
-  constructor(message: string, noRoute: boolean) {
+  /** true when the route server asked us to slow down and kept refusing. */
+  readonly busy: boolean;
+  constructor(message: string, noRoute: boolean, busy = false) {
     super(message);
     this.noRoute = noRoute;
+    this.busy = busy;
   }
 }
 
@@ -94,4 +97,5 @@ export interface PlannedRoute {
 export type PlanResult =
   | { ok: true; routes: PlannedRoute[]; shortestKm: number }
   | { ok: false; reason: 'too-short'; shortestKm: number }
-  | { ok: false; reason: 'no-route'; message: string };
+  | { ok: false; reason: 'no-route'; message: string }
+  | { ok: false; reason: 'busy' };

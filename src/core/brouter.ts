@@ -26,6 +26,11 @@ class Semaphore {
   constructor(n: number) {
     this.n = n;
   }
+  /** Change how many may run at once (takes effect for the next tasks). */
+  setLimit(n: number) {
+    this.n = n;
+    while (this.active < this.n && this.queue.length) this.queue.shift()?.();
+  }
   async run<T>(task: () => Promise<T>): Promise<T> {
     if (this.active >= this.n) await new Promise<void>((r) => this.queue.push(r));
     this.active++;
@@ -44,6 +49,9 @@ export class BRouterRouter implements Router {
   private gate: Semaphore;
   private profileIds = new Map<string, Promise<string>>();
   private lastStart = 0;
+  /** Answers from this session: "New routes" and similar plans reuse them. */
+  private memory = new Map<string, BRouterResponse>();
+  private calmTimer: ReturnType<typeof setTimeout> | undefined;
   /** Number of route requests actually sent (cache hits excluded). */
   requestCount = 0;
 
@@ -87,12 +95,14 @@ export class BRouterRouter implements Router {
     const lonlats = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join('|');
     // cache key uses the profile text itself, not the (temporary) server id
     const key = `brouter|${this.profileFor(ro)}|${lonlats}`;
-    let json = (await this.opts.cache?.get(key)) as BRouterResponse | undefined;
+    let json = this.memory.get(key) ?? ((await this.opts.cache?.get(key)) as BRouterResponse | undefined);
     if (!json) {
       const profile = await this.profileId(ro);
       json = await this.get(`${this.base}/brouter?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`, ro);
       await this.opts.cache?.set(key, json);
     }
+    if (this.memory.size > 400) this.memory.clear();
+    this.memory.set(key, json);
     return toRawRoute(json);
   }
 
@@ -115,10 +125,15 @@ export class BRouterRouter implements Router {
         url = url.replace(/profile=custom_\d+/, `profile=${fresh}`);
         continue;
       }
-      // The public server asks to slow down with 403 "retry later".
-      if (res.status === 403 && /retry later/i.test(text) && attempt < 4) {
-        await sleep(5000 * 2 ** attempt);
-        continue;
+      // The public server is busy ("retry later"): send fewer requests at once for a
+      // minute and retry after a short pause, instead of long waits.
+      if (res.status === 403 && /retry later/i.test(text)) {
+        this.calmDown();
+        if (attempt < 3) {
+          await sleep(1500 * (attempt + 1));
+          continue;
+        }
+        throw new RouterError('The route server is busy.', false, true);
       }
       if (res.status >= 500 && attempt < 3) {
         await sleep(1500 * (attempt + 1));
@@ -127,6 +142,12 @@ export class BRouterRouter implements Router {
       const noRoute = /not mapped|island|no route|operation killed|position not/i.test(text);
       throw new RouterError(`BRouter ${res.status}: ${text.slice(0, 200)}`, noRoute);
     }
+  }
+
+  private calmDown() {
+    this.gate.setLimit(2);
+    clearTimeout(this.calmTimer);
+    this.calmTimer = setTimeout(() => this.gate.setLimit(this.opts.maxConcurrent ?? 4), 60_000);
   }
 }
 
