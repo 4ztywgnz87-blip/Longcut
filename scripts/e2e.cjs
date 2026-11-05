@@ -67,7 +67,11 @@ const NIEUWKERKEN = { latitude: 51.1934, longitude: 4.178 };
   step('export gpx');
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 10000 }).catch(() => null),
-    page.getByRole('button', { name: /Send GPX/ }).click(),
+    (async () => {
+      await page.getByRole('button', { name: /Send to Garmin/ }).click();
+      await shot('6b-garmin');
+      await page.getByRole('button', { name: /Save GPX file/ }).click();
+    })(),
   ]);
   if (download) {
     const p = `${out}/${download.suggestedFilename()}`;

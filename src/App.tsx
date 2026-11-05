@@ -4,6 +4,7 @@ import MapView from './components/MapView';
 import type { MapRoute } from './components/MapView';
 import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
+import GarminPanel from './components/GarminPanel';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
@@ -51,6 +52,7 @@ export default function App() {
   const [gps, setGps] = useState<LngLat | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [mapsOpen, setMapsOpen] = useState(false);
+  const [garminOpen, setGarminOpen] = useState(false);
   const [saved, setSaved] = useState<SavedRoute[]>(() => savedRoutes.list());
   const [savedIds, setSavedIds] = useState<Record<number, string>>({});
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -76,6 +78,12 @@ export default function App() {
     ro.observe(sheet.current);
     return () => ro.disconnect();
   }, [view.k]);
+
+  // close the Garmin and Maps panels when switching screens or routes
+  useEffect(() => {
+    setGarminOpen(false);
+    setMapsOpen(false);
+  }, [view.k, active]);
 
   useEffect(() => {
     if (!toast) return;
@@ -159,11 +167,17 @@ export default function App() {
   const routeName = (target: Place | null, meters: number) =>
     loop || !target ? `LONGCUT ${fmtKm(meters)} km loop` : `LONGCUT ${fmtKm(meters)} km to ${target.name}`;
 
-  const doExport = async (coords: LngLat[], elevations: (number | null)[], meters: number, target: Place | null) => {
+  const doExport = async (
+    coords: LngLat[],
+    elevations: (number | null)[],
+    meters: number,
+    target: Place | null,
+    how: 'share' | 'download',
+  ) => {
     const name = routeName(target, meters);
-    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations));
-    if (outcome === 'downloaded') setToast('GPX saved. Import it in Garmin Connect as a course.');
-    if (outcome === 'shared') setToast('GPX shared.');
+    const outcome = await exportGpx(gpxFileName(meters / 1000, loop || !target ? 'loop' : target.name), toGpx(name, coords, elevations), how);
+    if (outcome === 'downloaded') setToast('GPX saved to your downloads.');
+    if (outcome === 'unsupported') setToast('Sharing is not available here. Use Save GPX file instead.');
   };
 
   const saveActive = () => {
@@ -228,7 +242,7 @@ export default function App() {
   }
   const pad = wide
     ? { top: 48, bottom: 48, left: sheetSize.w + 64, right: 48 }
-    : { top: 72, bottom: sheetSize.h + 24, left: 32, right: 32 };
+    : { top: 88, bottom: sheetSize.h + 24, left: 32, right: 32 };
 
   const r = routes[active];
   const isLoopNow = loop || (from && to && from.coord[0] === to.coord[0] && from.coord[1] === to.coord[1]);
@@ -385,13 +399,25 @@ export default function App() {
             </div>
           </div>
 
-          <div className="chips" role="group" aria-label="Route preferences">
-            <button type="button" className={`chip ${preferGreen ? 'on' : ''}`} aria-pressed={preferGreen} onClick={() => setPreferGreen(!preferGreen)}>
-              Prefer green
-            </button>
-            <button type="button" className={`chip ${unpavedOk ? 'on' : ''}`} aria-pressed={unpavedOk} onClick={() => setUnpavedOk(!unpavedOk)}>
-              Unpaved OK
-            </button>
+          <div className="prefs">
+            <div className="pref-row">
+              <span className="field-label" id="surface-label">Surface</span>
+              <div className="segmented" role="radiogroup" aria-labelledby="surface-label">
+                <button type="button" role="radio" aria-checked={!unpavedOk} className={!unpavedOk ? 'on' : ''} onClick={() => setUnpavedOk(false)}>
+                  Mostly paved
+                </button>
+                <button type="button" role="radio" aria-checked={unpavedOk} className={unpavedOk ? 'on' : ''} onClick={() => setUnpavedOk(true)}>
+                  Trails welcome
+                </button>
+              </div>
+            </div>
+            <label className="switch-row" htmlFor="green">
+              <span>
+                <span className="switch-title">Through parks &amp; forest</span>
+                <span className="switch-sub">Small detours for greener stretches</span>
+              </span>
+              <input id="green" type="checkbox" role="switch" checked={preferGreen} onChange={(e) => setPreferGreen(e.target.checked)} />
+            </label>
           </div>
 
           {problem && (
@@ -456,10 +482,6 @@ export default function App() {
               <b>{fmtKm(r.stats.length)}</b>
               <span>km</span>
             </div>
-            <span className={`dev ${Math.abs(r.deviation) <= 0.03 ? 'good' : 'warn'}`}>
-              {r.deviation >= 0 ? '+' : '−'}
-              {Math.abs(r.deviation * 100).toFixed(1)}% vs {km} km
-            </span>
           </div>
 
           <dl className="stats">
@@ -482,9 +504,10 @@ export default function App() {
           </dl>
           <ElevationSpark coords={r.coords} elevations={r.elevations} />
 
-          <button type="button" className="btn primary big" onClick={() => doExport(r.coords, r.elevations, r.stats.length, end)}>
-            <Icon name="download" /> Send GPX to Garmin
+          <button type="button" className="btn primary big" aria-expanded={garminOpen} onClick={() => setGarminOpen(!garminOpen)}>
+            <Icon name="download" /> Send to Garmin
           </button>
+          {garminOpen && <GarminPanel onShare={() => doExport(r.coords, r.elevations, r.stats.length, end, 'share')} onSave={() => doExport(r.coords, r.elevations, r.stats.length, end, 'download')} />}
           <div className="row-3">
             <button type="button" className={`btn ghost ${savedIds[active] ? 'on' : ''}`} aria-pressed={!!savedIds[active]} onClick={saveActive}>
               <Icon name="bookmark" /> {savedIds[active] ? 'Saved' : 'Save'}
@@ -493,7 +516,7 @@ export default function App() {
               <Icon name="map" /> Maps
             </button>
             <button type="button" className="btn ghost" onClick={() => run(variation + 1)}>
-              <Icon name="again" /> Again
+              <Icon name="again" /> New routes
             </button>
           </div>
           {mapsOpen && (
@@ -557,13 +580,15 @@ export default function App() {
             </span>
           </div>
           <ElevationSpark coords={view.route.coords} elevations={view.route.elevations} />
-          <button
-            type="button"
-            className="btn primary big"
-            onClick={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to)}
-          >
-            <Icon name="download" /> Send GPX to Garmin
+          <button type="button" className="btn primary big" aria-expanded={garminOpen} onClick={() => setGarminOpen(!garminOpen)}>
+            <Icon name="download" /> Send to Garmin
           </button>
+          {garminOpen && (
+            <GarminPanel
+              onShare={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'share')}
+              onSave={() => doExport(view.route.coords, view.route.elevations, view.route.lengthM, view.route.to, 'download')}
+            />
+          )}
           <div className="row-2">
             <a className="btn ghost" href={googleMapsUrl(view.route.coords)} target="_blank" rel="noreferrer">
               <Icon name="map" /> Google Maps

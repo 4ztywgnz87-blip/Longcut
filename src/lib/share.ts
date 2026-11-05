@@ -1,19 +1,23 @@
 // Hands a GPX file to the phone: the share sheet on iPhone/Android (so you can pick
 // Garmin Connect directly), or a normal download elsewhere.
 
-export type ExportOutcome = 'shared' | 'downloaded' | 'cancelled';
+export type ExportOutcome = 'shared' | 'downloaded' | 'cancelled' | 'unsupported';
 
-export async function exportGpx(fileName: string, gpx: string): Promise<ExportOutcome> {
-  const file = new File([gpx], fileName, { type: 'application/gpx+xml' });
+export function canShareFiles(): boolean {
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-  const touch = matchMedia('(pointer: coarse)').matches;
-  if (touch && nav.share && nav.canShare?.({ files: [file] })) {
+  const probe = new File(['x'], 'x.gpx', { type: 'application/gpx+xml' });
+  return !!nav.share && !!nav.canShare?.({ files: [probe] });
+}
+
+export async function exportGpx(fileName: string, gpx: string, how: 'share' | 'download'): Promise<ExportOutcome> {
+  const file = new File([gpx], fileName, { type: 'application/gpx+xml' });
+  if (how === 'share') {
+    if (!canShareFiles()) return 'unsupported';
     try {
-      await nav.share({ files: [file], title: fileName });
+      await navigator.share({ files: [file] });
       return 'shared';
     } catch (e) {
-      if ((e as DOMException).name === 'AbortError') return 'cancelled';
-      // fall through to a download when sharing fails
+      return (e as DOMException).name === 'AbortError' ? 'cancelled' : 'unsupported';
     }
   }
   const url = URL.createObjectURL(file);
