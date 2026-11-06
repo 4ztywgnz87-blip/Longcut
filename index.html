@@ -92,8 +92,9 @@
         var mix = function (p, q, t) { return [lerp(p[0], q[0], t), lerp(p[1], q[1], t)]; };
 
         // The app icon (public/favicon.svg), icon units: route as 3 curves, start dot, finish ring.
-        var R = [[156, 120], [146, 186.67], [136, 253.33], [126, 320], [118, 390], [230, 412], [324, 376], [348, 362], [360, 348], [368, 330]];
-        var ICON_C = [256, 256], ICON_H = 353, ICON_W = 56, DOT = 40, RING = 22;
+        var R = [[190.3, 118.8], [180.21, 200.93], [170.13, 283.07], [160.05, 365.2], [157.78, 383.68], [171.04, 398.8], [307.12, 398.8], [324.76, 398.8], [336.52, 395.44], [346.32, 387.6]];
+        var CORNER = [155.92, 398.8], FOOT_END = [346.32, 398.8]; // the icon's corner and the end of its (flat) foot line
+        var ICON_C = [256, 256], ICON_H = 364, ICON_W = 78.4, DOT = 44.8, RING_R = 39.2, RING = 23.52;
         // The L of Barlow Condensed Black Italic (font units, y up): stem 181 thick leaning 7°,
         // foot 161 thick. Stem top, bottom corner, foot end. The ends reach a little past the
         // letter; a mask with the exact letter shape trims them, so it ends as the real letter.
@@ -105,6 +106,7 @@
         var iconScale = Math.min(136, innerHeight * 0.2) / ICON_H; // the icon about 100 px tall
         var toIcon = function (p) { return [innerWidth / 2 + (p[0] - ICON_C[0]) * iconScale, innerHeight / 2 + (p[1] - ICON_C[1]) * iconScale]; };
         var ICON = R.map(toIcon);
+        var FLAT = [R[7], R[8], R[9]].map(function (p) { return toIcon([p[0], CORNER[1]]); }); // the end, without its upturn
         // until the word is measured the icon just stays where it is
         g = { icon: ICON, M: [1, 0, 0, 0, 1, 0], k: 1, iconScale: iconScale, stemTo: ICON.slice(0, 4), footTo: ICON.slice(3), knee: ICON[3], clipT: '' };
         function measure() {
@@ -116,7 +118,7 @@
           var line = function (a, b) { return [a, mix(a, b, 1 / 3), mix(a, b, 2 / 3), b]; };
           var icon = ICON;
           // the move: the affine map that puts the icon's start, bend and finish on the L's top, corner and foot end
-          var M = affine([icon[0], icon[3], icon[9]], [toL(TOP), toL(KNEE), toL(TIP)]);
+          var M = affine([icon[0], toIcon(CORNER), toIcon(FOOT_END)], [toL(TOP), toL(KNEE), toL(TIP)]);
           var S0 = toL(STEM_TO[0]), S1 = toL(STEM_TO[1]), F0 = toL(FOOT_TO[0]), F1 = toL(FOOT_TO[1]), F2 = toL(FOOT_TO[2]);
           g = {
             icon: icon, M: M, k: k, iconScale: iconScale,
@@ -181,7 +183,9 @@
             var m1 = inOut(clamp((t - T.move) / T.moveLen)), m2 = inOut(clamp((t - T.shape) / T.shapeLen));
             var A = blend(m1), s = scaleOf(A);
             // the route: moved as a whole (m1), then bent into the letter (m2)
-            var P = g.icon.map(function (p) { return apply(A, p); });
+            // the little upturn at the finish flattens while the finish ring goes
+            var flat = out(clamp((m1 - 0.2) / 0.6));
+            var P = g.icon.map(function (p, i) { return apply(A, i >= 7 ? mix(p, FLAT[i - 7], flat) : p); });
             var stemP = P.slice(0, 4).map(function (p, i) { return mix(p, g.stemTo[i], m2); });
             var footP = P.slice(3).map(function (p, i) { return mix(p, g.footTo[i], m2); });
             // the bend stays one round bend (stem and foot meet in the corner) until late;
@@ -209,7 +213,7 @@
             var gone = 1 - out(clamp((m1 - 0.35) / 0.65));
             circle(dotA, P[0], DOT * g.iconScale * s * pDot * gone);
             var ring = (0.5 + 0.5 * pRing) * gone * (pRing > 0 ? 1 : 0);
-            circle(dotB, P[9], (DOT - RING / 2) * g.iconScale * s * ring);
+            circle(dotB, P[9], RING_R * g.iconScale * s * ring);
             dotB.setAttribute('stroke-width', RING * g.iconScale * s * ring);
             // The letter shape with a margin around it, the margin shrinking to nothing: it shaves
             // the round ends flat bit by bit and leaves exactly the letter.

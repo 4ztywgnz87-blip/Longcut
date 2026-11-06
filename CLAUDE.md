@@ -39,9 +39,10 @@ exports it to a Garmin watch.
 - No accounts: favourites, recent places, saved routes and settings live in
   localStorage (`src/lib/storage.ts`). Re-adding the home-screen app can lose them.
 - Accent colour volt `#D7FF3A` on near-black `#111113`; fonts Barlow / Barlow Condensed.
-- App icon: route forming an "L" whose straight stem leans 7° like the italic L of the logo,
-  round bend, end curling slightly up, start dot + finish ring (`public/favicon.svg`; PNGs
-  rendered from it full-bleed, no rounded corners).
+- App icon: an L-shaped route, proportioned like the logo's L: straight stem leaning 7°,
+  tight round bend, flat foot (0.68 × stem height) with a tiny upturn into the finish ring,
+  start dot on top, heavy line (W 78 / mark height 364 in a 512 tile). `public/favicon.svg`;
+  PNGs rendered from it full-bleed. Generator: parameters in the start screen's R/CORNER.
 - Status bar: no `black-translucent` meta (iOS 26 gradient + short-viewport bug). The
   top fade is our own gradient (`.app::before`).
 
@@ -116,7 +117,8 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
 - Glass panels: `rgba(17,17,19,0.3)` + `blur(6px)`. UI text is not selectable (inputs are).
 - Planning screen: animated route drawing + step text.
 - Start screen: inline in `index.html` (shows before any JS). The icon's route draws itself,
-  moves as a whole onto the L slot (affine map: start→stem top, bend→corner, finish→foot end,
+  moves as a whole onto the L slot (affine map: start→stem top, icon corner→corner, end of the flat foot line→foot end;
+  the finish upturn flattens while the ring shrinks,
   gaining the letter's weight), then bends into the L. Ends stay round; stem and foot stay one
   round bend until 60 %, then the corner sharpens. A mask = the real glyph outline plus a
   margin (stroke) that shrinks to 0 shaves the round ends flat → pixel-identical to the text L,
