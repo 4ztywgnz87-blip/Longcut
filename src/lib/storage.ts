@@ -38,6 +38,8 @@ export interface Settings {
   distanceKm: number;
   preferGreen: boolean;
   unpavedOk: boolean;
+  /** Surface choice; older saved settings only have unpavedOk. */
+  surface?: 'paved' | 'mixed' | 'trail';
   preferLit: boolean;
 }
 

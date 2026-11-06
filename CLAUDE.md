@@ -89,11 +89,15 @@ Surfaces (profile + `isUnpaved` in brouter.ts): paved (asphalt, concrete, sett�
 counts as good** (compacted, fine_gravel, gravel = steenslag/dolomiet; Dauwe agreed), unpaved =
 soft (dirt, grass, sand, mud, rough tracks) or path/track with no known surface ("Mostly paved":
 soft +0.35/+0.6, unknown +0.15).
+Surface choice in the app: **Paved / Mixed / Trail** (`surface` setting; Paved = avoid_unpaved,
+Mixed = unpaved fine, Trail = `prefer_trail`: soft −0.3, unknown −0.25, half-paved −0.2, other
+tracks/paths −0.1, paved roads +0.9). Near Nieuwkerken Trail gives ~13 % unpaved on a 12 km loop
+vs 0–4 % (few trails there), ~28 % on a 20 km A→B; trail loops are jumpier (use the full budget).
 
 Map camera: never `setPadding(0)` on its own (the view jumps); MapView clears padding with a
 `jumpTo` that keeps the screen middle, then `fitBounds`. Loop on/off does not refit.
 
-Running profile options: `avoid_unpaved` (Surface), `prefer_green` (Scenery),
+Running profile options: `avoid_unpaved` + `prefer_trail` (Surface), `prefer_green` (Scenery),
 `prefer_lit` (Light: "Lit streets"; lit=yes data is sparse, mostly avoids dark tracks).
 Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` penalty.
 
@@ -111,7 +115,7 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   start and finish are set** (never with a single point → no jumping).
 - Edit panel: Start / Finish (search, current location, pick on map, favourites ★,
   recent places), loop toggle, distance stepper, collapsible **Options** row
-  (Surface / Scenery / Light segmented controls).
+  (Surface Paved/Mixed/Trail, Scenery, Light segmented controls).
 - Results and saved routes share one view (`routeBody` in App.tsx): big km, stats (Busy /
   Unpaved / Twice / Climb, tap one for an explanation), elevation sparkline, Send to Garmin,
   Maps (Google/Apple approximation), New routes; results add Save, saved routes add Delete

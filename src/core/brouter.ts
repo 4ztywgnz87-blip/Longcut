@@ -68,7 +68,8 @@ export class BRouterRouter implements Router {
     return this.opts.profileText
       .replace(/^assign avoid_unpaved\s*=\s*\w+/m, `assign avoid_unpaved = ${ro.unpavedOk ? 'false' : 'true'}`)
       .replace(/^assign prefer_green\s*=\s*\w+/m, `assign prefer_green  = ${ro.preferGreen ? 'true' : 'false'}`)
-      .replace(/^assign prefer_lit\s*=\s*\w+/m, `assign prefer_lit    = ${ro.preferLit ? 'true' : 'false'}`);
+      .replace(/^assign prefer_lit\s*=\s*\w+/m, `assign prefer_lit    = ${ro.preferLit ? 'true' : 'false'}`)
+      .replace(/^assign prefer_trail\s*=\s*\w+/m, `assign prefer_trail  = ${ro.preferTrail ? 'true' : 'false'}`);
   }
 
   /** Upload the profile ahead of time, so the first plan doesn't wait for it. */

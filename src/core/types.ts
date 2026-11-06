@@ -36,6 +36,8 @@ export interface RouteOptions {
   preferGreen: boolean;
   /** Prefer streets with street lights (optional so older callers keep working). */
   preferLit?: boolean;
+  /** "Mostly trail": seek out unpaved ways (implies unpavedOk). */
+  preferTrail?: boolean;
 }
 
 /** Optional cache for router responses (used by the test scripts). */

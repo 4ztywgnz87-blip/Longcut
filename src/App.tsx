@@ -82,7 +82,10 @@ export default function App() {
   const [km, setKm] = useState(initial.distanceKm);
   const [kmText, setKmText] = useState(String(initial.distanceKm));
   const [preferGreen, setPreferGreen] = useState(initial.preferGreen);
-  const [unpavedOk, setUnpavedOk] = useState(initial.unpavedOk);
+  // Surface: Mostly paved / Trails welcome / Mostly trail
+  const [surface, setSurface] = useState<'paved' | 'mixed' | 'trail'>(initial.surface ?? (initial.unpavedOk ? 'mixed' : 'paved'));
+  const unpavedOk = surface !== 'paved';
+  const preferTrail = surface === 'trail';
   const [preferLit, setPreferLit] = useState(initial.preferLit);
   const [optionsOpen, setOptionsOpen] = useState(false);
   // Every "New routes" adds a set; you can page back to earlier sets.
@@ -135,8 +138,8 @@ export default function App() {
 
   // --- settings & layout ---------------------------------------------------
   useEffect(() => {
-    settings.set({ distanceKm: km, preferGreen, unpavedOk, preferLit });
-  }, [km, preferGreen, unpavedOk, preferLit]);
+    settings.set({ distanceKm: km, preferGreen, unpavedOk, preferLit, surface });
+  }, [km, preferGreen, unpavedOk, preferLit, surface]);
 
   useEffect(() => {
     const mq = matchMedia('(min-width: 900px)');
@@ -250,11 +253,11 @@ export default function App() {
   const endC = end?.coord;
   useEffect(() => {
     if (view.k !== 'edit') return;
-    const t = setTimeout(() => prepare(fromC ?? null, endC ?? null, { unpavedOk, preferGreen, preferLit }), 400);
+    const t = setTimeout(() => prepare(fromC ?? null, endC ?? null, { unpavedOk, preferGreen, preferLit, preferTrail }), 400);
     return () => clearTimeout(t);
     // only re-run when the actual places or options change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromC?.[0], fromC?.[1], endC?.[0], endC?.[1], unpavedOk, preferGreen, preferLit, view.k]);
+  }, [fromC?.[0], fromC?.[1], endC?.[0], endC?.[1], surface, preferGreen, preferLit, view.k]);
 
   /**
    * Plans routes. `more` = "New routes": keep the earlier sets so you can go back.
@@ -306,7 +309,7 @@ export default function App() {
         start: start.coord,
         end: finish.coord,
         distanceKm: dist,
-        prefs: { unpavedOk, preferGreen, preferLit },
+        prefs: { unpavedOk, preferGreen, preferLit, preferTrail },
         variation: opts.variation,
         signal: ctl.signal,
         onProgress: (routes) => {
@@ -732,7 +735,7 @@ export default function App() {
           >
             <span className="field-label">Options</span>
             <span className="options-summary">
-              <span className={unpavedOk ? 'on' : ''}>{unpavedOk ? 'Trails' : 'Paved'}</span>
+              <span className={unpavedOk ? 'on' : ''}>{surface === 'trail' ? 'Trail' : surface === 'mixed' ? 'Mixed' : 'Paved'}</span>
               <span className={preferGreen ? 'on' : ''}>{preferGreen ? 'Green' : 'Any scenery'}</span>
               <span className={preferLit ? 'on' : ''}>{preferLit ? 'Lit' : 'Daylight'}</span>
             </span>
@@ -741,11 +744,12 @@ export default function App() {
           <div className="prefs" id="route-options" hidden={!optionsOpen}>
             <Segmented
               label="Surface"
-              value={unpavedOk}
-              onChange={setUnpavedOk}
+              value={surface}
+              onChange={setSurface}
               options={[
-                [false, 'Mostly paved'],
-                [true, 'Trails welcome'],
+                ['paved', 'Paved'],
+                ['mixed', 'Mixed'],
+                ['trail', 'Trail'],
               ]}
             />
             <Segmented
