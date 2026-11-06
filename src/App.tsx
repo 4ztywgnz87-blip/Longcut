@@ -415,7 +415,7 @@ export default function App() {
 
       {view.k === 'edit' && (
         <form
-          className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''}`}
+          className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`}
           style={sheetDrag}
           {...collapsedDrag}
           ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
@@ -602,7 +602,7 @@ export default function App() {
       )}
 
       {view.k === 'results' && r && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
           <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
@@ -712,7 +712,7 @@ export default function App() {
       )}
 
       {view.k === 'savedRoute' && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
           <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>

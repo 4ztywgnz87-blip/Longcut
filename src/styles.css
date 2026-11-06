@@ -143,7 +143,8 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 
 /* Panel body and grab handle (swipe down to hide the panel) */
-.sheet { transition: transform 0.22s ease; }
+/* springs back with a slight bounce */
+.sheet { transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1); }
 .sheet-body { display: grid; gap: inherit; }
 .sheet-handle {
   display: flex; justify-content: center; align-items: center;
@@ -151,7 +152,12 @@ button:disabled { opacity: 0.35; cursor: default; }
   border: 0; background: none; padding: 0;
   cursor: grab; touch-action: none;
 }
-.sheet-handle span { width: 40px; height: 5px; border-radius: 3px; background: var(--muted); opacity: 0.55; }
+.sheet-handle span {
+  width: 40px; height: 5px; border-radius: 3px; background: var(--muted); opacity: 0.55;
+  transition: width 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+/* while you hold the panel, the bar stretches and lights up a little */
+.sheet.dragging .sheet-handle span { width: 56px; opacity: 1; background: var(--fg); }
 .sheet-handle:active { cursor: grabbing; }
 .sheet.collapsed { gap: 8px; touch-action: none; }
 @media (max-width: 899px) {
@@ -326,6 +332,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 .planning-step { animation: step-in 0.35s ease-out; }
 @keyframes step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
+  .sheet, .locate-btn { transition: none; }
   .plan-route { animation: none; stroke-dashoffset: 0; }
   .plan-runner { display: none; }
   .planning-step { animation: none; }
@@ -373,7 +380,7 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: var(--bg); color: var(--fg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
-.locate-btn { transition: transform 0.22s ease; }
+.locate-btn { transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1); }
 .locate-btn:active { color: #4c8dff; }
 
 /* Pick on map */
