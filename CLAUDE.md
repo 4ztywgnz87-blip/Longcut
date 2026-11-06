@@ -114,10 +114,15 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   Map: active route volt, alternatives grey, busy stretches red, unpaved dashed.
 - Glass panels: `rgba(17,17,19,0.3)` + `blur(6px)`. UI text is not selectable (inputs are).
 - Planning screen: animated route drawing + step text.
-- Start screen: inline in `index.html` (shows before any JS). The app icon draws its route
-  (~1 s), shrinks into the L of LONGCUT while the other letters slide in, then a running bar
-  shows while loading. When the map is ready App calls `window.__longcutReady()` and the word
-  flies into the logo pill. On screen at least ~1.8 s, at most 4 s.
+- Start screen: inline in `index.html` (shows before any JS). The icon's route draws itself,
+  moves as a whole onto the L slot (affine map: start→stem top, bend→corner, finish→foot end,
+  gaining the letter's weight), then bends into the L (round ends flatten as half-ellipses; a
+  mask with the real glyph outline trims the last bits) → pixel-identical to the text L, then
+  swapped. Letters are revealed by a sliding cover (transform), bg fades via opacity, word
+  flies into the logo (transform): all compositor-safe. The **map is only built after the
+  shape is done** (`window.__longcutSplash.shapeDone`, App `mapOn`), because MapLibre's main-
+  thread work made the morph stutter; its style is preloaded. Font: animation holds before the
+  morph until Barlow Condensed 900 italic is in (≤2.5 s). Reduced motion: word only. Max 4 s.
 
 ## Commands
 

@@ -24,7 +24,12 @@ import { RouterError } from './core/types';
 
 // The map library is the biggest part of the app: load it next to the panel, so the
 // panel shows up first instead of waiting for the map code.
-const MapView = lazy(() => import('./components/MapView'));
+// Start downloading it right away, but build the map only once the start screen's
+// letter animation is done: building it is heavy work that would make that animation stutter.
+const mapModule = import('./components/MapView');
+const MapView = lazy(() => mapModule);
+type Splash = { shapeDone: Promise<void> };
+const splash = (window as unknown as { __longcutSplash?: Splash }).__longcutSplash;
 
 // Garmin's FIT library is large: load it only once a route is on screen.
 let fitLib: Promise<typeof import('./core/fit')> | null = null;
@@ -99,6 +104,18 @@ export default function App() {
   const flyToMe = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [mapsOpen, setMapsOpen] = useState(false);
+  const [mapOn, setMapOn] = useState(!splash);
+  useEffect(() => {
+    if (!splash) return;
+    let live = true;
+    const on = () => live && setMapOn(true);
+    splash.shapeDone.then(on);
+    const t = setTimeout(on, 3000); // never wait longer than this
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, []);
   const [saved, setSaved] = useState<SavedRoute[]>(() => savedRoutes.list());
   const [savedIds, setSavedIds] = useState<Map<PlannedRoute, string>>(() => new Map());
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -475,6 +492,7 @@ export default function App() {
 
   return (
     <div className={`app view-${view.k}`}>
+      {mapOn ? (
       <Suspense fallback={<div className="map" />}>
       <MapView
         routes={mapRoutes}
@@ -492,6 +510,9 @@ export default function App() {
         me={gps ? { coord: gps, accuracy } : null}
       />
       </Suspense>
+      ) : (
+        <div className="map" />
+      )}
 
       {view.k !== 'search' && (
         <button

@@ -13,114 +13,255 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <!-- the map style and tiles come from here: start connecting right away -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
+    <!-- the map is built a moment later (after the start animation): fetch its style now -->
+    <link rel="preload" href="https://tiles.openfreemap.org/styles/dark" as="fetch" crossorigin />
     <title>Longcut</title>
-    <!-- Start screen: part of the page itself, so it shows at once while the app loads
-         behind it. The app icon draws its route, turns into the L of LONGCUT, and once the
-         map is ready the word flies into the logo top left. Never waits longer than 4 s. -->
+    <!-- Start screen, part of the page so it shows before any script loads.
+         The app icon's route draws itself, then bends into the L of LONGCUT while the other
+         letters follow; once the map is ready the word flies into the logo top left.
+         It never holds the app back for long (4 s at most). -->
     <style>
-      #splash {
-        position: fixed; inset: 0; z-index: 50;
-        display: grid; place-items: center; align-content: center; gap: 22px;
-        background: #111113;
-        transition: background-color 0.5s ease;
-        pointer-events: none;
-      }
-      #splash.leaving { background-color: rgba(17, 17, 19, 0); }
-      #splash .stage { position: relative; display: grid; place-items: center; height: 150px; }
-      #splash .icon { position: absolute; left: 50%; top: 50%; width: 132px; height: 150px; margin: -75px 0 0 -66px; transform-origin: center; will-change: transform, opacity; }
-      #splash .route { fill: none; stroke: #d7ff3a; stroke-width: 44; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: splash-draw 0.8s 0.1s cubic-bezier(0.5, 0, 0.3, 1) forwards; }
+      #splash { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+      #splash .bg { position: absolute; inset: 0; background: #111113; transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.08s; will-change: opacity; }
+      #splash.leaving .bg { opacity: 0; }
+      #splash svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+      #splash .route { fill: none; stroke: #d7ff3a; stroke-linecap: round; stroke-linejoin: round; }
+      #splash .cap { fill: #d7ff3a; }
       #splash .start { fill: #f3f3f5; }
-      #splash .finish { fill: #111113; stroke: #f3f3f5; stroke-width: 22; opacity: 0; transform-origin: 388px 322px; transform: scale(0.4); animation: splash-pop 0.25s 0.8s ease-out forwards; }
-      @keyframes splash-draw { to { stroke-dashoffset: 0; } }
-      @keyframes splash-pop { to { opacity: 1; transform: scale(1); } }
-      #splash .word {
+      #splash .finish { fill: #111113; stroke: #f3f3f5; }
+      #splash .wm {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
         font: italic 900 64px/1 'Barlow Condensed', 'Arial Narrow', sans-serif;
-        letter-spacing: -0.01em; text-transform: uppercase; color: #f3f3f5;
-        white-space: nowrap; transform-origin: center; will-change: transform;
+        letter-spacing: -0.01em; text-transform: uppercase; color: #f3f3f5; white-space: nowrap;
+        transform-origin: center; will-change: transform;
       }
-      #splash .word b { color: #d7ff3a; font-weight: inherit; display: inline-block; opacity: 0; }
-      #splash .word .rest { display: inline-block; clip-path: inset(0 100% 0 0); }
-      #splash.word-on .word b { opacity: 1; transition: opacity 0.2s 0.3s ease; }
-      #splash.word-on .word .rest { clip-path: inset(0 0 0 0); transition: clip-path 0.45s 0.3s cubic-bezier(0.3, 0, 0.2, 1); }
-      #splash .line { width: 120px; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity 0.3s ease; }
-      #splash.word-on .line { opacity: 1; transition-delay: 0.6s; }
-      #splash.leaving .line { opacity: 0; transition-delay: 0s; }
-      #splash .line::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 2px; background: #d7ff3a; animation: splash-run 1.1s ease-in-out infinite; }
-      @keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      #splash .wm .l { color: #d7ff3a; opacity: 0; }
+      #splash .wm .rest { position: relative; display: inline-block; transform: translateX(-8px); will-change: transform; }
+      #splash .wm .cover { position: absolute; top: -20%; bottom: -20%; left: 0; width: 110%; background: #111113; will-change: transform; }
+      #splash .wm .base { display: inline-block; width: 0; height: 0; }
+      #splash .wait { position: absolute; left: 50%; top: calc(50% + 52px); width: 36px; height: 3px; margin-left: -18px; border-radius: 2px; overflow: hidden; background: rgba(255, 255, 255, 0.07); opacity: 0; transition: opacity 0.4s ease; }
+      #splash .wait.on { opacity: 1; }
+      #splash.leaving .wait { opacity: 0; transition-duration: 0.15s; }
+      #splash .wait::after { content: ''; display: block; width: 50%; height: 100%; border-radius: 2px; background: #d7ff3a; animation: splash-wait 1s cubic-bezier(0.6, 0, 0.4, 1) infinite; }
+      @keyframes splash-wait { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
       .brand.waiting, .brand.waiting * { color: transparent !important; }
-      @media (prefers-reduced-motion: reduce) {
-        #splash .route { animation: none; stroke-dashoffset: 0; }
-        #splash .finish { animation: none; opacity: 1; transform: none; }
-        #splash .line::after { animation: none; width: 100%; }
-      }
     </style>
   </head>
   <body>
     <div id="splash" aria-hidden="true">
-      <div class="stage">
-        <svg class="icon" viewBox="96 58 320 364">
-          <path class="route" pathLength="1" d="M150 112 C 124 220, 116 320, 166 366 C 216 408, 300 392, 344 368 C 368 354, 380 340, 388 322" />
-          <circle class="start" cx="150" cy="112" r="40" />
-          <circle class="finish" cx="388" cy="322" r="40" />
-        </svg>
-        <div class="word"><b>L</b><span class="rest">ongcut</span></div>
-      </div>
-      <div class="line"></div>
+      <div class="bg"></div>
+      <svg>
+        <clipPath id="splash-l" clipPathUnits="userSpaceOnUse"><path d="M8 15 90 685Q91 692 95.5 696Q100 700 106 700H260Q266 700 269.5 696Q273 692 272 685L209 166Q207 161 213 161H403Q410 161 413.5 157Q417 153 416 146L400 15Q397 0 383 0H20Q14 0 10.5 4Q7 8 8 15Z" /></clipPath>
+        <g class="mark">
+          <path class="route stem" /><path class="route foot" />
+          <ellipse class="cap c1" /><ellipse class="cap c2" /><circle class="cap c3" r="0" />
+          <circle class="start" r="0" /><circle class="finish" r="0" />
+        </g>
+      </svg>
+      <div class="wm"><span class="l">L</span><span class="rest">ongcut<span class="cover"></span></span><span class="base"></span></div>
+      <div class="wait"></div>
     </div>
     <script>
       (function () {
         var splash = document.getElementById('splash');
-        var icon = splash.querySelector('.icon');
-        var word = splash.querySelector('.word');
+        var $ = function (q) { return splash.querySelector(q); };
+        var mark = $('.mark'), stem = $('.stem'), foot = $('.foot'), capTop = $('.c1'), capEnd = $('.c2'), capKnee = $('.c3');
+        var dotA = $('.start'), dotB = $('.finish'), clip = $('#splash-l path');
+        var wm = $('.wm'), slotL = $('.wm .l'), rest = $('.wm .rest'), cover = $('.wm .cover');
+        // the app builds its map once the letter shape is done (that work would make this stutter)
+        var shapeDone; window.__longcutSplash = { shapeDone: new Promise(function (r) { shapeDone = r; }) };
         var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var t0 = Date.now();
-        var appReady = false, wordShown = false, left = false;
+        var slow = 1;
+        var t0 = performance.now();
 
-        // 1. the icon draws its route (CSS), 2. then it turns into the L of the word
-        var fontsReady = document.fonts && document.fonts.load
-          ? document.fonts.load('italic 900 64px "Barlow Condensed"').catch(function () {})
-          : Promise.resolve();
-        var timeout = new Promise(function (r) { setTimeout(r, 600); });
-        Promise.all([Promise.race([fontsReady, timeout]), new Promise(function (r) { setTimeout(r, still ? 0 : 1050); })]).then(toWord);
+        function bezier(x1, y1, x2, y2) {
+          return function (x) {
+            if (x <= 0) return 0; if (x >= 1) return 1;
+            var t = x;
+            for (var i = 0; i < 8; i++) {
+              var e = 3 * x1 * t * (1 - t) * (1 - t) + 3 * x2 * t * t * (1 - t) + t * t * t - x;
+              var d = 3 * x1 * (1 - t) * (1 - 3 * t) + 3 * x2 * t * (2 - 3 * t) + 3 * t * t;
+              if (Math.abs(d) < 1e-6) break;
+              t -= e / d;
+            }
+            return 3 * y1 * t * (1 - t) * (1 - t) + 3 * y2 * t * t * (1 - t) + t * t * t;
+          };
+        }
+        var inOut = bezier(0.65, 0, 0.25, 1), out = bezier(0.2, 0.8, 0.2, 1), draw = bezier(0.5, 0, 0.3, 1);
+        var clamp = function (v) { return v < 0 ? 0 : v > 1 ? 1 : v; };
+        var lerp = function (a, b, t) { return a + (b - a) * t; };
+        var mix = function (p, q, t) { return [lerp(p[0], q[0], t), lerp(p[1], q[1], t)]; };
 
-        function toWord() {
-          var L = word.querySelector('b').getBoundingClientRect();
-          var I = icon.getBoundingClientRect();
-          // the icon shrinks onto the L (about the height of a capital)
-          var scale = (L.height * 0.78) / I.height;
-          var dx = L.left + L.width * 0.58 - (I.left + I.width / 2); // the L leans right (italic)
-          var dy = L.top + L.height / 2 - (I.top + I.height / 2);
-          icon.style.transition = 'transform 0.45s cubic-bezier(0.6, 0, 0.3, 1), opacity 0.2s 0.3s ease';
-          icon.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
-          icon.style.opacity = '0';
-          splash.classList.add('word-on');
-          setTimeout(function () { wordShown = true; maybeLeave(); }, still ? 0 : 800);
+        // The app icon (public/favicon.svg), icon units: route as 3 curves, start dot, finish ring.
+        var R = [[150, 112], [124, 220], [116, 320], [166, 366], [216, 408], [300, 392], [344, 368], [368, 354], [380, 340], [388, 322]];
+        var ICON_C = [269, 243], ICON_H = 340, ICON_W = 44, DOT = 40, RING = 22;
+        // The L of Barlow Condensed Black Italic (font units, y up): stem 181 thick leaning 7°,
+        // foot 161 thick. Stem top, bottom corner, foot end. The ends reach a little past the
+        // letter; a mask with the exact letter shape trims them, so it ends as the real letter.
+        var TOP = [183.1, 700], KNEE = [107.3, 80.5], TIP = [408, 80.5];
+        var STEM_TO = [[184.6, 712], [96.3, -12]], FOOT_TO = [[40, 80.5], [372, 80.5], [430, 80.5]];
+        var STEM_W = 186, FOOT_W = 167, L_C = [212, 350], FONT = 64;
+
+        var g; // geometry on screen
+        var iconScale = Math.min(136, innerHeight * 0.2) / ICON_H; // the icon about 100 px tall
+        var toIcon = function (p) { return [innerWidth / 2 + (p[0] - ICON_C[0]) * iconScale, innerHeight / 2 + (p[1] - ICON_C[1]) * iconScale]; };
+        var ICON = R.map(toIcon);
+        // until the word is measured the icon just stays where it is
+        g = { icon: ICON, M: [1, 0, 0, 0, 1, 0], k: 1, iconScale: iconScale, stemTo: ICON.slice(0, 4), footTo: ICON.slice(3), knee: ICON[3], clipT: '' };
+        function measure() {
+          // whole pixels: text snaps to the pixel grid, the drawing doesn't
+          var r0 = wm.getBoundingClientRect();
+          wm.style.left = Math.round(r0.left) + 'px'; wm.style.top = Math.round(r0.top) + 'px'; wm.style.transform = 'none';
+          var box = slotL.getBoundingClientRect(), base = $('.wm .base').getBoundingClientRect().top, k = FONT / 1000;
+          var toL = function (p) { return [box.left + p[0] * k, base - p[1] * k]; };
+          var line = function (a, b) { return [a, mix(a, b, 1 / 3), mix(a, b, 2 / 3), b]; };
+          var icon = ICON;
+          // the move: the affine map that puts the icon's start, bend and finish on the L's top, corner and foot end
+          var M = affine([icon[0], icon[3], icon[9]], [toL(TOP), toL(KNEE), toL(TIP)]);
+          var S0 = toL(STEM_TO[0]), S1 = toL(STEM_TO[1]), F0 = toL(FOOT_TO[0]), F1 = toL(FOOT_TO[1]), F2 = toL(FOOT_TO[2]);
+          g = {
+            icon: icon, M: M, k: k, iconScale: iconScale,
+            stemTo: line(S0, S1), footTo: line(F0, F1).concat(line(F1, F2).slice(1)),
+            knee: toL(KNEE),
+            clipT: 'translate(' + box.left + ' ' + base + ') scale(' + k + ' ' + -k + ')',
+          };
+        }
+        // affine map [a b c; d e f] with p_i -> q_i
+        function affine(p, q) {
+          var x1 = p[0][0], y1 = p[0][1], x2 = p[1][0], y2 = p[1][1], x3 = p[2][0], y3 = p[2][1];
+          var det = x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2);
+          var solve = function (u1, u2, u3) {
+            return [
+              (u1 * (y2 - y3) + u2 * (y3 - y1) + u3 * (y1 - y2)) / det,
+              (u1 * (x3 - x2) + u2 * (x1 - x3) + u3 * (x2 - x1)) / det,
+              (u1 * (x2 * y3 - x3 * y2) + u2 * (x3 * y1 - x1 * y3) + u3 * (x1 * y2 - x2 * y1)) / det,
+            ];
+          };
+          var X = solve(q[0][0], q[1][0], q[2][0]), Y = solve(q[0][1], q[1][1], q[2][1]);
+          return [X[0], X[1], X[2], Y[0], Y[1], Y[2]];
+        }
+        function blend(m) { // identity -> M
+          var M = g.M, I = [1, 0, 0, 0, 1, 0];
+          return I.map(function (v, i) { return lerp(v, M[i], m); });
+        }
+        var apply = function (A, p) { return [A[0] * p[0] + A[1] * p[1] + A[2], A[3] * p[0] + A[4] * p[1] + A[5]]; };
+        var scaleOf = function (A) { return Math.sqrt(Math.abs(A[0] * A[4] - A[1] * A[3])); };
+        function curve(P) {
+          var f = function (p) { return p[0].toFixed(2) + ' ' + p[1].toFixed(2); };
+          var d = 'M' + f(P[0]);
+          for (var i = 1; i < P.length; i += 3) d += 'C' + f(P[i]) + ',' + f(P[i + 1]) + ',' + f(P[i + 2]);
+          return d;
+        }
+        var circle = function (el, c, r) { el.setAttribute('cx', c[0]); el.setAttribute('cy', c[1]); el.setAttribute('r', Math.max(0, r)); };
+        // a round line end that flattens into a square one: half an ellipse pressed flat along the line
+        function roundEnd(el, end, prev, w, flat) {
+          var a = Math.atan2(end[1] - prev[1], end[0] - prev[0]) * 180 / Math.PI;
+          el.setAttribute('rx', Math.max(0, (w / 2) * (1 - flat))); el.setAttribute('ry', w / 2);
+          el.setAttribute('transform', 'translate(' + end[0] + ' ' + end[1] + ') rotate(' + a + ')');
         }
 
-        // 3. when the map is ready, the word flies into the logo top left
+        // timeline (ms): draw the route, move into place, become the letter, the word follows
+        var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1180, shapeLen: 400, letters: 1420, lettersLen: 480 };
+        var END = T.letters + T.lettersLen;
+        var appReady = false, wordDone = false, left = false, measured = false, held = 0;
+        var fontIn = false;
+        var fontDone = function () { fontIn = true; };
+        if (document.fonts && document.fonts.load) document.fonts.load('italic 900 64px "Barlow Condensed"').then(fontDone, fontDone);
+        else fontIn = true;
+        setTimeout(fontDone, 2500); // never wait for the font longer than this
+        go();
+
+        function go() {
+          if (still) {
+            var finish = function () { if (!fontIn) return setTimeout(finish, 50); measure(); slotL.style.opacity = 1; cover.style.display = 'none'; rest.style.transform = 'none'; mark.style.display = 'none'; shapeDone(); wordDone = true; maybeLeave(); };
+            return finish();
+          }
+          var lens = null, lettersOn = false;
+          function frame(now) {
+            var raw = (now - t0) / slow, t = raw - held;
+            // the letter needs its font: hold the drawn icon until it's there
+            if (t >= T.move && !measured) {
+              if (!fontIn) { held = raw - T.move; t = T.move; }
+              else { measure(); measured = true; }
+            }
+            var pDot = out(clamp(t / 260)), pDraw = draw(clamp((t - T.draw) / T.drawLen)), pRing = out(clamp((t - T.ring) / 220));
+            var m1 = inOut(clamp((t - T.move) / T.moveLen)), m2 = inOut(clamp((t - T.shape) / T.shapeLen));
+            var A = blend(m1), s = scaleOf(A);
+            // the route: moved as a whole (m1), then bent into the letter (m2)
+            var P = g.icon.map(function (p) { return apply(A, p); });
+            var stemP = P.slice(0, 4).map(function (p, i) { return mix(p, g.stemTo[i], m2); });
+            var footP = P.slice(3).map(function (p, i) { return mix(p, g.footTo[i], m2); });
+            // it gains the letter's weight gradually while moving and bending
+            var w0 = ICON_W * g.iconScale * s, q = 0.65 * m1 + 0.35 * m2;
+            var ws = lerp(w0, STEM_W * g.k, q), wf = lerp(w0, FOOT_W * g.k, q);
+            stem.setAttribute('d', curve(stemP)); foot.setAttribute('d', curve(footP));
+            stem.setAttribute('stroke-width', ws); foot.setAttribute('stroke-width', wf);
+            if (pDraw < 1) {
+              // drawing: first the stem part, then the bottom curve (round tips)
+              if (!lens) lens = [stem.getTotalLength(), foot.getTotalLength()];
+              var done = pDraw * (lens[0] + lens[1]);
+              stem.style.strokeDasharray = lens[0]; stem.style.strokeDashoffset = lens[0] - Math.min(done, lens[0]);
+              foot.style.strokeDasharray = lens[1]; foot.style.strokeDashoffset = lens[1] - Math.max(0, done - lens[0]);
+              stem.style.visibility = done > 0 ? 'visible' : 'hidden'; foot.style.visibility = done > lens[0] ? 'visible' : 'hidden';
+              stem.style.strokeLinecap = foot.style.strokeLinecap = 'round';
+            } else {
+              // drawn: square ends plus round caps as circles, which shrink away while it becomes the letter
+              stem.style.strokeDasharray = foot.style.strokeDasharray = 'none';
+              stem.style.visibility = foot.style.visibility = 'visible';
+              stem.style.strokeLinecap = foot.style.strokeLinecap = 'butt';
+              roundEnd(capTop, stemP[0], stemP[1], ws, m2);
+              roundEnd(capEnd, footP[6], footP[5], wf, m2);
+              circle(capKnee, mix(P[3], g.knee, m2), Math.min(ws, wf) / 2); // round bend; the mask squares it off
+            }
+            // the dots ride along and are taken in while it moves
+            var gone = 1 - out(clamp((m1 - 0.35) / 0.65));
+            circle(dotA, P[0], DOT * g.iconScale * s * pDot * gone);
+            var ring = (0.5 + 0.5 * pRing) * gone * (pRing > 0 ? 1 : 0);
+            circle(dotB, P[9], (DOT - RING / 2) * g.iconScale * s * ring);
+            dotB.setAttribute('stroke-width', RING * g.iconScale * s * ring);
+            // the exact letter shape trims the ends, only once it's in place
+            if (m2 >= 0.75) {
+              var c = 1 + 0.12 * (1 - clamp((m2 - 0.75) / 0.25));
+              clip.setAttribute('transform', g.clipT + ' translate(' + L_C[0] + ' ' + L_C[1] + ') scale(' + c + ') translate(' + -L_C[0] + ' ' + -L_C[1] + ')');
+              mark.setAttribute('clip-path', 'url(#splash-l)');
+            }
+            // the other letters follow
+            if (!lettersOn && t >= T.letters) {
+              lettersOn = true;
+              var ease = T.lettersLen * slow + 'ms cubic-bezier(0.2, 0.8, 0.2, 1)';
+              rest.style.transition = cover.style.transition = 'transform ' + ease;
+              rest.style.transform = 'none'; cover.style.transform = 'translateX(100%)';
+            }
+            // the drawn L is now exactly the letter: hand over
+            if (m2 >= 1) { slotL.style.opacity = 1; mark.style.opacity = 0; shapeDone(); }
+            if (t < END + 150) requestAnimationFrame(frame);
+            else { cover.style.display = 'none'; wordDone = true; maybeLeave(); }
+          }
+          requestAnimationFrame(frame);
+          setTimeout(function () { if (!left) $('.wait').classList.add('on'); }, 2600 * slow);
+        }
+
+        // when the map is ready, the word flies into the logo top left
         window.__longcutReady = function () { appReady = true; maybeLeave(); };
-        // never hold the app back: after 4 s the panel can be used, map or not
-        setTimeout(function () { appReady = true; wordShown = true; maybeLeave(); }, 4000);
+        setTimeout(function () { appReady = true; wordDone = true; maybeLeave(); }, 4000 * slow);
 
         function maybeLeave() {
-          if (left || !appReady || !wordShown) return;
+          if (left || !appReady || !wordDone) return;
           left = true;
+          slotL.style.opacity = 1; mark.style.opacity = 0; cover.style.display = 'none'; rest.style.transform = 'none'; shapeDone();
           var brand = document.querySelector('.brand');
           splash.classList.add('leaving');
           if (brand && !still) {
-            var a = word.getBoundingClientRect();
-            var b = brand.getBoundingClientRect();
-            var scale = parseFloat(getComputedStyle(brand).fontSize) / 64;
-            var dx = b.left + b.width / 2 - (a.left + a.width / 2);
-            var dy = b.top + b.height / 2 - (a.top + a.height / 2);
+            var a = wm.getBoundingClientRect(), b = brand.getBoundingClientRect();
+            var scale = parseFloat(getComputedStyle(brand).fontSize) / FONT;
+            var dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
             brand.classList.add('waiting');
-            word.style.transition = 'transform 0.55s cubic-bezier(0.6, 0, 0.2, 1)';
-            word.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
-            setTimeout(function () { brand.classList.remove('waiting'); splash.remove(); }, 580);
+            wm.style.transition = 'transform ' + 650 * slow + 'ms cubic-bezier(0.65, 0, 0.25, 1)';
+            wm.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + scale + ')';
+            setTimeout(function () { brand.classList.remove('waiting'); splash.remove(); }, 670 * slow);
           } else {
-            word.style.transition = 'opacity 0.4s';
-            word.style.opacity = '0';
-            setTimeout(function () { if (brand) brand.classList.remove('waiting'); splash.remove(); }, 500);
+            wm.style.transition = 'opacity 0.35s'; wm.style.opacity = 0;
+            setTimeout(function () { splash.remove(); }, 600);
           }
         }
       })();
