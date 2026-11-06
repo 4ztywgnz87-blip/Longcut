@@ -10,8 +10,21 @@ import { measure, removeSpurs, segmentKey } from './analyze';
 import { RouterError } from './types';
 import type { PlanRequest, PlanResult, PlannedRoute, RouteOptions, Router, Segment } from './types';
 
-/** Accepted length window, relative to the requested distance. */
-export const WINDOW = { ideal: [0, 0.03] as const, max: [-0.05, 0.05] as const, aim: 0.015 };
+/**
+ * Length rules, in meters, for a requested distance `target`.
+ * - A route should never be shorter than asked. A route that comes out a little short
+ *   gets an out-and-back stretch at the finish (see padToTarget).
+ * - Up to 500 m longer is ideal: time to walk out. A lot longer (1 km) is not.
+ */
+export const lengthRules = (target: number) => {
+  const extraOk = Math.min(500, target * 0.05); // ideal: 0 … +extraOk
+  return {
+    extraOk,
+    maxOver: Math.max(extraOk, Math.min(1000, target * 0.05)), // longest accepted
+    maxShort: Math.min(1500, target * 0.05), // shortest accepted (then padded)
+    aim: target + extraOk / 2,
+  };
+};
 const MAX_STEPS = 7;
 /** After this long, stop refining and show the best routes found so far. */
 const TIME_BUDGET_MS = 30_000;
@@ -106,6 +119,7 @@ interface Attempt {
 
 interface Candidate {
   route: PlannedRoute;
+  segments: Segment[];
   keys: Map<string, number>; // segment key → length, for comparing routes
 }
 
@@ -115,8 +129,12 @@ const totalLength = (segs: Segment[]) => segs.reduce((sum, s) => sum + s.length,
 function scoreRoute(segments: Segment[], target: number, req: PlanRequest) {
   const stats = measure(segments);
   const dev = deviation(stats.length, target);
-  const [lo, hi] = WINDOW.ideal;
-  const devPenalty = dev < lo ? (lo - dev) * 25 : dev > hi ? (dev - hi) * 25 : 0;
+  const { extraOk } = lengthRules(target);
+  // per km: too long is worse than a little short (short gets an out-and-back,
+  // which also counts as run twice)
+  const overKm = Math.max(0, stats.length - target - extraOk) / 1000;
+  const shortKm = Math.max(0, target - stats.length) / 1000;
+  const devPenalty = overKm * 0.5 + shortKm * 0.25 + (shortKm * 1000 / target) * 4;
   const score =
     devPenalty +
     stats.overlapShare * 4 +
@@ -156,7 +174,8 @@ async function fitTemplate(
   deadline: number,
   onBusy: () => void,
 ): Promise<Attempt | null> {
-  const aim = target * (1 + WINDOW.aim);
+  const rules = lengthRules(target);
+  const aim = rules.aim;
   let size = Math.max(initialSize, t.minSize);
   let variant = 0;
   let below: Attempt | null = null;
@@ -168,7 +187,7 @@ async function fitTemplate(
   for (let step = 0; step < MAX_STEPS && Date.now() < deadline; step++) {
     let segments: Segment[];
     try {
-      const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro), deadline);
+      const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro, req.signal), deadline);
       if (!raw) break; // out of time: keep the best try so far
       segments = removeSpurs(raw.segments);
     } catch (e) {
@@ -189,8 +208,7 @@ async function fitTemplate(
     if (debug()) console.log(`  [${t.label}] step ${step} v${variant} size ${(size / 1000).toFixed(2)}km → ${(length / 1000).toFixed(2)}km`);
     if (!best || closeness(length) < closeness(best.length)) best = attempt;
 
-    const dev = deviation(length, target);
-    if (dev >= WINDOW.ideal[0] && dev <= WINDOW.ideal[1]) break;
+    if (length >= target && length <= target + rules.extraOk) break;
 
     // Stuck: the length barely changed, so the via points keep snapping to the same roads.
     const stuck = previous !== null && Math.abs(length - previous) / target < 0.01;
@@ -241,17 +259,19 @@ export async function planRoutes(
   if (!isLoop) {
     let direct: Segment[];
     try {
-      direct = removeSpurs((await router.route([req.start, req.end], ro)).segments);
+      direct = removeSpurs((await router.route([req.start, req.end], ro, req.signal)).segments);
     } catch (e) {
       if (e instanceof RouterError && e.noRoute) return { ok: false, reason: 'no-route', message: e.message };
       throw e;
     }
     const len = totalLength(direct);
     shortestKm = len / 1000;
-    if (len > target * (1 + WINDOW.max[1])) return { ok: false, reason: 'too-short', shortestKm };
-    if (len >= target * (1 + WINDOW.max[0])) {
+    const rules = lengthRules(target);
+    if (len > target + rules.maxOver) return { ok: false, reason: 'too-short', shortestKm };
+    if (len >= target - rules.maxShort) {
       // the direct route already fits
-      return { ok: true, shortestKm, routes: [toCandidate(direct, target, req, 'direct').route] };
+      const padded = await padToTarget(direct, target, req, router, ro);
+      return { ok: true, shortestKm, routes: [toCandidate(padded.segments, target, req, 'direct', padded.extra).route] };
     }
     detour = Math.min(1.6, Math.max(1.1, len / crow));
   }
@@ -260,7 +280,7 @@ export async function planRoutes(
   const initial = isLoop ? target / detour : Math.max(crow * 1.05, target / detour);
   const deadline = Date.now() + TIME_BUDGET_MS;
   let busy = false;
-  const [lo, hi] = WINDOW.max;
+  const { maxShort, maxOver } = lengthRules(target);
   const found: Candidate[] = [];
   let chosen: Candidate[] = [];
   const base = (req.variation ?? 0) * MAX_ROUNDS;
@@ -278,7 +298,7 @@ export async function planRoutes(
 
     // Keep routes inside the allowed window, best first, and skip near-duplicates.
     const ranked = found
-      .filter((c) => c.route.deviation >= lo && c.route.deviation <= hi)
+      .filter((c) => c.route.stats.length >= target - maxShort && c.route.stats.length <= target + maxOver)
       .sort((x, y) => x.route.score - y.route.score);
     chosen = [];
     for (const c of ranked) {
@@ -290,7 +310,79 @@ export async function planRoutes(
     if (busy) return { ok: false, reason: 'busy' };
     return { ok: false, reason: 'no-route', message: 'Could not find a route of this length here.' };
   }
-  return { ok: true, shortestKm, routes: chosen.map((c) => c.route) };
+  // 4. Routes that came out a little short get an out-and-back at the finish.
+  const routes = await Promise.all(
+    chosen.map(async (c) => {
+      if (c.route.stats.length >= target) return c.route;
+      const padded = await padToTarget(c.segments, target, req, router, ro);
+      return toCandidate(padded.segments, target, req, c.route.label, padded.extra).route;
+    }),
+  );
+  return { ok: true, shortestKm, routes };
+}
+
+/** The first `len` meters of a path (the last piece is cut to fit). */
+function takeLength(segs: Segment[], len: number): Segment[] {
+  const out: Segment[] = [];
+  let done = 0;
+  for (let i = 0; i < segs.length && done < len - 0.01; i++) {
+    const s = segs[i];
+    if (done + s.length <= len) {
+      out.push(s);
+      done += s.length;
+      continue;
+    }
+    const f = (len - done) / s.length;
+    const to: LngLat = [s.from[0] + (s.to[0] - s.from[0]) * f, s.from[1] + (s.to[1] - s.from[1]) * f];
+    const startEle = i > 0 ? segs[i - 1].ele : s.ele;
+    const ele = s.ele != null && startEle != null ? startEle + (s.ele - startEle) * f : s.ele;
+    out.push({ ...s, to, ele, length: len - done });
+    done = len;
+  }
+  return out;
+}
+
+/** The same path run the other way. */
+function reversePath(segs: Segment[]): Segment[] {
+  return segs
+    .map((s, i) => ({ ...s, from: s.to, to: s.from, ele: i > 0 ? segs[i - 1].ele : s.ele }))
+    .reverse();
+}
+
+/**
+ * Makes a route that is a little short exactly as long as asked, by adding an
+ * out-and-back at the finish: run past the finish and come back. If there is no
+ * road on past the finish, turn around and run back a bit along the route instead.
+ */
+async function padToTarget(
+  segments: Segment[],
+  target: number,
+  req: PlanRequest,
+  router: Router,
+  ro: RouteOptions,
+): Promise<{ segments: Segment[]; extra: number }> {
+  const need = target - totalLength(segments);
+  if (need < 20 || !segments.length) return { segments, extra: 0 };
+  const half = need / 2;
+  const end = segments[segments.length - 1].to;
+  let out: Segment[] | null = null;
+  try {
+    // keep going in the direction you arrive from
+    const back = takeLength(reversePath(segments), 150);
+    const proj = makeProjection(end);
+    const [bx, by] = proj.toXY(back[back.length - 1]?.to ?? end);
+    const d = Math.hypot(bx, by) || 1;
+    const reach = half * 1.4 + 100;
+    const target2 = proj.toLngLat((-bx / d) * reach, (-by / d) * reach);
+    const raw = await router.route([end, target2], ro, req.signal);
+    const path = removeSpurs(raw.segments);
+    if (totalLength(path) >= half) out = takeLength(path, half);
+  } catch (e) {
+    if (req.signal?.aborted) throw e;
+    // no road on past the finish: fall back to the route itself
+  }
+  if (!out) out = takeLength(reversePath(segments), half);
+  return { segments: [...segments, ...out, ...reversePath(out)], extra: need };
 }
 
 /** Share of road two routes have in common (0 = nothing, 1 = identical). */
@@ -300,7 +392,7 @@ function similarity(a: Candidate, b: Candidate): number {
   return shared / Math.min(a.route.stats.length, b.route.stats.length);
 }
 
-function toCandidate(segments: Segment[], target: number, req: PlanRequest, label: string): Candidate {
+function toCandidate(segments: Segment[], target: number, req: PlanRequest, label: string, extra = 0): Candidate {
   const { stats, dev, score } = scoreRoute(segments, target, req);
   const keys = new Map<string, number>();
   for (const s of segments) keys.set(segmentKey(s), s.length);
@@ -313,6 +405,7 @@ function toCandidate(segments: Segment[], target: number, req: PlanRequest, labe
     score,
     deviation: dev,
     label,
+    extraM: extra,
   };
-  return { route, keys };
+  return { route, keys, segments };
 }

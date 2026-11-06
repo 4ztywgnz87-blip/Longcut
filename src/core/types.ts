@@ -45,7 +45,7 @@ export interface ResponseCache {
 }
 
 export interface Router {
-  route(points: LngLat[], opts: RouteOptions): Promise<RawRoute>;
+  route(points: LngLat[], opts: RouteOptions, signal?: AbortSignal): Promise<RawRoute>;
 }
 
 export class RouterError extends Error {
@@ -69,6 +69,8 @@ export interface PlanRequest {
   prefs: PlanPrefs;
   /** 0 for the first plan; 1, 2, … for "again" to get different routes. */
   variation?: number;
+  /** Stops the search (the Cancel button). */
+  signal?: AbortSignal;
 }
 
 export interface RouteStats {
@@ -92,6 +94,8 @@ export interface PlannedRoute {
   /** Distance deviation from the requested distance, as a fraction (+0.02 = 2% longer). */
   deviation: number;
   label: string; // which template produced it, for debugging
+  /** Meters of out-and-back added at the finish to reach the distance (0 = none). */
+  extraM?: number;
 }
 
 export type PlanResult =

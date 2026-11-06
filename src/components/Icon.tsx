@@ -1,12 +1,15 @@
 // Small stroke icons, drawn inline so the app needs no icon font.
 const PATHS: Record<string, string> = {
   back: 'M15 5l-7 7 7 7',
+  forward: 'M9 5l7 7-7 7',
   locate: 'M12 3v3M12 18v3M3 12h3M18 12h3M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
   pin: 'M12 21s-6-5.5-6-11a6 6 0 1 1 12 0c0 5.5-6 11-6 11zM12 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
   star: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z',
   'star-filled': 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z',
   swap: 'M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3',
-  loop: 'M4.6 9A8 7.2 0 0 1 19.9 11.4M19.9 11.4l-2.8-1.6M19.9 11.4l1.7-2.7M19.4 15A8 7.2 0 0 1 4.1 12.6M4.1 12.6l2.8 1.6M4.1 12.6l-1.7 2.7',
+  // a running track: you end where you start
+  loop: 'M8.5 5.5h7a6.5 6.5 0 0 1 0 13h-7a6.5 6.5 0 0 1 0-13z',
+  info: 'M12 11v5M12 8h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
   minus: 'M5 12h14',
   chevron: 'M6 9l6 6 6-6',
   plus: 'M12 5v14M5 12h14',
@@ -38,6 +41,7 @@ export function Icon({ name, size = 22 }: { name: keyof typeof PATHS | string; s
     >
       <path d={PATHS[name] ?? ''} />
       {name === 'my-location' && <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />}
+      {name === 'loop' && <circle cx="12" cy="18.5" r="2.6" fill="currentColor" stroke="none" />}
     </svg>
   );
 }

@@ -1,6 +1,20 @@
 // Favorites and saved routes, kept on this device (no account).
 import type { LngLat } from '../core/geo';
+import type { RoadKind, RouteStats } from '../core/types';
 import type { Place } from './geocode';
+
+/** A long list of repeating values, stored short: [value, how many times]. */
+export type Runs<T> = [T, number][];
+export const toRuns = <T,>(xs: T[]): Runs<T> => {
+  const out: Runs<T> = [];
+  for (const x of xs) {
+    const last = out[out.length - 1];
+    if (last && last[0] === x) last[1]++;
+    else out.push([x, 1]);
+  }
+  return out;
+};
+export const fromRuns = <T,>(runs: Runs<T>): T[] => runs.flatMap(([x, n]) => Array<T>(n).fill(x));
 
 export interface SavedRoute {
   id: string;
@@ -12,6 +26,12 @@ export interface SavedRoute {
   ascent: number;
   coords: LngLat[];
   elevations: (number | null)[];
+  /** Added later: older saved routes don't have these. */
+  stats?: RouteStats;
+  roads?: Runs<RoadKind>;
+  unpaved?: Runs<boolean>;
+  extraM?: number;
+  loop?: boolean;
 }
 
 export interface Settings {

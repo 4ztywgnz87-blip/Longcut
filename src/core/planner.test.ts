@@ -66,15 +66,15 @@ describe('planRoutes', () => {
   });
 
   for (const km of [10, 25, 60]) {
-    it(`A→B ${km} km lands within 0..+3%`, async () => {
+    it(`A→B ${km} km is never short and at most 1 km long`, async () => {
       const router = new FakeRouter();
       const r = await planRoutes({ start: home, end: parents, distanceKm: km, prefs }, router);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
       expect(r.routes.length).toBe(3);
       for (const route of r.routes) {
-        expect(route.deviation).toBeGreaterThanOrEqual(0);
-        expect(route.deviation).toBeLessThanOrEqual(0.03);
+        expect(route.stats.length).toBeGreaterThanOrEqual(km * 1000 - 1);
+        expect(route.stats.length).toBeLessThanOrEqual(km * 1000 + 1000);
         expect(route.coords[0]).toEqual(home);
         expect(route.coords.at(-1)).toEqual(parents);
       }
@@ -86,8 +86,24 @@ describe('planRoutes', () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     for (const route of r.routes) {
-      expect(Math.abs(route.deviation - 0.015)).toBeLessThan(0.016);
+      expect(route.stats.length).toBeGreaterThanOrEqual(21000 - 1);
+      expect(route.stats.length).toBeLessThanOrEqual(22000);
       expect(haversine(route.coords[0], route.coords.at(-1)!)).toBeLessThan(1);
     }
+  });
+
+  it('adds an out-and-back at the finish when the route is a little short', async () => {
+    // the direct route is ~5.6 km (4.5 km × 1.25); ask a bit more than that
+    const router = new FakeRouter();
+    const direct = await router.route([home, parents]);
+    const len = direct.segments.reduce((a, s) => a + s.length, 0);
+    const want = Math.round(len + 200) / 1000;
+    const r = await planRoutes({ start: home, end: parents, distanceKm: want, prefs }, router);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const route = r.routes[0];
+    expect(route.stats.length).toBeCloseTo(want * 1000, 0);
+    expect(route.extraM).toBeGreaterThan(150);
+    expect(haversine(route.coords.at(-1)!, parents)).toBeLessThan(1);
   });
 });

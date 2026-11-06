@@ -50,14 +50,20 @@ exports it to a Garmin watch.
    with a "Use N km" button; if it already fits → return it.
 2. Via points on an **ellipse with foci A and B** (2- and 3-via templates, left/right);
    loops use a square-ish shape through A. Each template's size is fitted
-   (scale/interpolate) until length is within **0…+3%** (allowed window ±5%).
+   (scale/interpolate) until length is within **0…+500 m** (`lengthRules`: ideal 0…+min(500 m, 5%);
+   accepted −min(1.5 km, 5%) … +max(500 m, min(1 km, 5%))). Dauwe wants never shorter, a little
+   longer is fine (walking out), 1 km longer is too much.
 3. Stuck or "jumpy" lengths (via flips across a railway/motorway) → shift the via
    angles (`variant`). Extra **rounds** of fresh variants until 3 good, different
    routes (similarity ≤ 70%). **Time budget 30 s**; returns the best found so far.
-4. Out-and-back spurs are removed (`removeSpurs`). Score (lower = better): distance
-   outside 0…+3% ×25, run-twice ×4, busy roads ×3, noisy (next to motorways) ×1.5,
-   unpaved ×0.5 (only when "Mostly paved").
-5. "New routes" = `variation + 1` (shifts the via angles).
+4. Out-and-back spurs are removed (`removeSpurs`). Score (lower = better): km too long
+   (beyond +500 m) ×0.5, km short ×0.25 (+ its run-twice share), run-twice ×4, busy roads ×3,
+   noisy (next to motorways) ×1.5, unpaved ×0.5 (only when "Mostly paved").
+   Routes that are a little short get an **out-and-back at the finish** (`padToTarget`: past the
+   finish and back via one extra BRouter call; fallback: back along the route) → `extraM`,
+   shown as "Includes N m out and back at the finish".
+5. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
+   "Earlier / Set n of m / Later". `PlanRequest.signal` lets the Cancel button stop a search.
 
 BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, in-session
 response cache, on 403 "retry later" → short retries (1.5–4.5 s) and 2 parallel for a
@@ -82,8 +88,14 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
 - Edit panel: Start / Finish (search, current location, pick on map, favourites ★,
   recent places), loop toggle, distance stepper, collapsible **Options** row
   (Surface / Scenery / Light segmented controls).
-- Results: route tabs, big km, stats (Busy / Unpaved / Twice / Climb), elevation
-  sparkline, Send to Garmin, Save, Maps (Google/Apple approximation), New routes.
+- Results and saved routes share one view (`routeBody` in App.tsx): big km, stats (Busy /
+  Unpaved / Twice / Climb, tap one for an explanation), elevation sparkline, Send to Garmin,
+  Maps (Google/Apple approximation), New routes; results add Save, saved routes add Delete
+  (with confirm). Saved list: swipe a row left to delete (`SwipeRow`). Saved routes store
+  stats and road/unpaved runs (`toRuns`); older ones lack them. Loops are named "Loop · street".
+- Distance − / +: hold to repeat (`useHold`). Loop toggle shows a track icon + "LOOP".
+- Messages (toast) belong to the screen they were shown on.
+- Logo: Barlow Condensed 900 italic, tight. Fonts are self-hosted (@fontsource, latin only).
   Map: active route volt, alternatives grey, busy stretches red, unpaved dashed.
 - Glass panels: `rgba(17,17,19,0.3)` + `blur(6px)`. UI text is not selectable (inputs are).
 - Planning screen: animated route drawing + step text.
@@ -117,6 +129,9 @@ Push to `main` → GitHub Actions (`.github/workflows/deploy.yml`) runs tests, b
 publishes to GitHub Pages (~1–2 min). Check with
 `gh api repos/4ztywgnz87-blip/Longcut/actions/runs --jq '.workflow_runs[0]'`.
 `vite.config.ts` uses `base: './'` and bundles the MapLibre worker (`?worker&url`).
+MapView is lazy-loaded (panel shows before the map code). `public/sw.js` is a small service
+worker (production only): page network-first, `/assets/` cache-first, OpenFreeMap style/fonts
+stale-while-revalidate. Bump `VERSION` in sw.js if caching rules change.
 
 ## Ideas not done yet (only if asked)
 

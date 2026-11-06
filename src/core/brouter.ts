@@ -91,14 +91,15 @@ export class BRouterRouter implements Router {
     return json.profileid;
   }
 
-  async route(points: LngLat[], ro: RouteOptions): Promise<RawRoute> {
+  async route(points: LngLat[], ro: RouteOptions, signal?: AbortSignal): Promise<RawRoute> {
+    signal?.throwIfAborted();
     const lonlats = points.map((p) => `${p[0].toFixed(6)},${p[1].toFixed(6)}`).join('|');
     // cache key uses the profile text itself, not the (temporary) server id
     const key = `brouter|${this.profileFor(ro)}|${lonlats}`;
     let json = this.memory.get(key) ?? ((await this.opts.cache?.get(key)) as BRouterResponse | undefined);
     if (!json) {
       const profile = await this.profileId(ro);
-      json = await this.get(`${this.base}/brouter?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`, ro);
+      json = await this.get(`${this.base}/brouter?lonlats=${lonlats}&profile=${profile}&alternativeidx=0&format=geojson`, ro, signal);
       await this.opts.cache?.set(key, json);
     }
     if (this.memory.size > 400) this.memory.clear();
@@ -106,14 +107,15 @@ export class BRouterRouter implements Router {
     return toRawRoute(json);
   }
 
-  private async get(url: string, ro: RouteOptions): Promise<BRouterResponse> {
+  private async get(url: string, ro: RouteOptions, signal?: AbortSignal): Promise<BRouterResponse> {
     for (let attempt = 0; ; attempt++) {
       const res = await this.gate.run(async () => {
         const wait = this.lastStart + (this.opts.minIntervalMs ?? 150) - Date.now();
         this.lastStart = Math.max(Date.now(), this.lastStart + (this.opts.minIntervalMs ?? 150));
         if (wait > 0) await sleep(wait);
+        signal?.throwIfAborted();
         this.requestCount++;
-        return fetch(url);
+        return fetch(url, { signal });
       });
       const text = await res.text();
       if (res.ok) return JSON.parse(text) as BRouterResponse;
@@ -131,6 +133,7 @@ export class BRouterRouter implements Router {
         this.calmDown();
         if (attempt < 3) {
           await sleep(1500 * (attempt + 1));
+          signal?.throwIfAborted();
           continue;
         }
         throw new RouterError('The route server is busy.', false, true);
