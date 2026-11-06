@@ -92,10 +92,10 @@ export default function App() {
     if (!el) return;
     // h = how much of the screen the panel covers, measured from its top edge to the
     // bottom of the app, so padding for the phone's home bar is included
+    // offsetTop ignores the drag/spring transform, so this is where the panel settles
     const measure = () => {
-      const r = el.getBoundingClientRect();
-      const bottom = el.parentElement?.getBoundingClientRect().bottom ?? innerHeight;
-      setSheetSize({ w: r.width, h: Math.max(0, bottom - r.top) });
+      const appHeight = el.parentElement?.clientHeight ?? innerHeight;
+      setSheetSize({ w: el.offsetWidth, h: Math.max(0, appHeight - el.offsetTop) });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -354,7 +354,7 @@ export default function App() {
           type="button"
           className="locate-btn"
           aria-label="Show my location"
-          style={wide ? undefined : { bottom: sheetSize.h + 12 }}
+          style={wide ? undefined : { bottom: sheetSize.h + 12, ...sheetDrag }}
           onClick={goToMe}
         >
           <Icon name="my-location" />

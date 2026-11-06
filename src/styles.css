@@ -369,6 +369,7 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: var(--bg); color: var(--fg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
+.locate-btn { transition: transform 0.22s ease; }
 .locate-btn:active { color: #4c8dff; }
 
 /* Pick on map */
@@ -438,7 +439,13 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 /* Phones: a more compact control panel so more of the map shows */
 @media (max-width: 899px) {
-  .sheet { gap: 13px; padding-top: 14px; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }
+  /* The panel runs 120px past the bottom edge, so pulling it up never shows the map below it */
+  .sheet {
+    gap: 13px; padding-top: 14px;
+    bottom: -120px;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px + 120px);
+    max-height: calc(72% + 120px);
+  }
   .field { min-height: 42px; padding: 4px 12px; gap: 10px; }
   .field-label { font-size: 11px; }
   .field-value { font-size: 15px; }

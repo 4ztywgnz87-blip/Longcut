@@ -14,7 +14,9 @@ import type { PlanRequest, PlanResult, PlannedRoute, RouteOptions, Router, Segme
 export const WINDOW = { ideal: [0, 0.03] as const, max: [-0.05, 0.05] as const, aim: 0.015 };
 const MAX_STEPS = 7;
 /** After this long, stop refining and show the best routes found so far. */
-const TIME_BUDGET_MS = 15_000;
+const TIME_BUDGET_MS = 30_000;
+/** Rounds of fresh variants to try when the first round gives fewer than 3 good routes. */
+const MAX_ROUNDS = 3;
 const LOOP_THRESHOLD_M = 250;
 /** Two alternatives sharing more than this share of road count as "the same route". */
 const MAX_SIMILARITY = 0.7;
@@ -201,6 +203,15 @@ async function fitTemplate(
     if (length < aim) below = !below || length > below.length ? attempt : below;
     else above = !above || length < above.length ? attempt : above;
 
+    // Jumpy: almost the same size gives very different lengths, typically because a
+    // via point flips to the other side of a railway or motorway. Move the points.
+    if (!stuck && below && above && Math.abs(above.size - below.size) / size < 0.06 && (above.length - below.length) / target > 0.08) {
+      variant++;
+      below = above = null;
+      size = Math.max(t.minSize, size * (aim / length));
+      continue;
+    }
+
     let next: number;
     if (below && above && above.length > below.length && !stuck) {
       // interpolate between the two closest tries
@@ -249,22 +260,31 @@ export async function planRoutes(
   const initial = isLoop ? target / detour : Math.max(crow * 1.05, target / detour);
   const deadline = Date.now() + TIME_BUDGET_MS;
   let busy = false;
-  const found = await Promise.all(
-    templates(req, isLoop).map(async (t) => {
-      const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true));
-      return a ? toCandidate(a.segments, target, req, t.label) : null;
-    }),
-  );
-
-  // 3. Keep routes inside the allowed window, best first, and skip near-duplicates.
   const [lo, hi] = WINDOW.max;
-  const ranked = found
-    .filter((c): c is Candidate => c !== null && c.route.deviation >= lo && c.route.deviation <= hi)
-    .sort((x, y) => x.route.score - y.route.score);
-  const chosen: Candidate[] = [];
-  for (const c of ranked) {
-    if (chosen.every((o) => similarity(c, o) <= MAX_SIMILARITY)) chosen.push(c);
-    if (chosen.length === 3) break;
+  const found: Candidate[] = [];
+  let chosen: Candidate[] = [];
+  const base = (req.variation ?? 0) * MAX_ROUNDS;
+
+  // 3. Rounds: if fewer than 3 good, different routes came out, try fresh variants.
+  for (let round = 0; round < MAX_ROUNDS && chosen.length < 3 && Date.now() < deadline && !busy; round++) {
+    const roundReq = { ...req, variation: base + round };
+    const results = await Promise.all(
+      templates(roundReq, isLoop).map(async (t) => {
+        const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true));
+        return a ? toCandidate(a.segments, target, req, t.label) : null;
+      }),
+    );
+    found.push(...results.filter((c): c is Candidate => c !== null));
+
+    // Keep routes inside the allowed window, best first, and skip near-duplicates.
+    const ranked = found
+      .filter((c) => c.route.deviation >= lo && c.route.deviation <= hi)
+      .sort((x, y) => x.route.score - y.route.score);
+    chosen = [];
+    for (const c of ranked) {
+      if (chosen.every((o) => similarity(c, o) <= MAX_SIMILARITY)) chosen.push(c);
+      if (chosen.length === 3) break;
+    }
   }
   if (!chosen.length) {
     if (busy) return { ok: false, reason: 'busy' };
