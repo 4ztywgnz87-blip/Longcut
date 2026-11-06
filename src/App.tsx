@@ -485,6 +485,8 @@ export default function App() {
         onReady={(m) => {
           mapRef.current = m;
           (window as unknown as { __longcutMap?: unknown }).__longcutMap = m; // handy for testing
+          // the start screen (index.html) leaves once the map is ready
+          (window as unknown as { __longcutReady?: () => void }).__longcutReady?.();
         }}
         onSelectRoute={(i) => setActive(i)}
         me={gps ? { coord: gps, accuracy } : null}

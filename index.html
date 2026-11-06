@@ -14,8 +14,78 @@
     <!-- the map style and tiles come from here: start connecting right away -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
     <title>Longcut</title>
+    <!-- Start screen: part of the page itself, so it shows at once while the app loads
+         behind it. It never makes you wait: it leaves as soon as the map is ready. -->
+    <style>
+      #splash {
+        position: fixed; inset: 0; z-index: 50;
+        display: grid; place-items: center; align-content: center; gap: 18px;
+        background: #111113;
+        transition: background-color 0.5s ease;
+        pointer-events: none;
+      }
+      #splash.leaving { background-color: rgba(17, 17, 19, 0); }
+      #splash .word {
+        font: italic 900 64px/1 'Barlow Condensed', 'Arial Narrow', sans-serif;
+        letter-spacing: -0.01em; text-transform: uppercase; color: #f3f3f5;
+        opacity: 0; transition: opacity 0.25s ease;
+        transform-origin: center; will-change: transform;
+      }
+      #splash.fonts .word { opacity: 1; }
+      #splash .word b { color: #d7ff3a; font-weight: inherit; }
+      #splash .line { width: 120px; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.08); transition: opacity 0.2s ease; }
+      #splash .line::after {
+        content: ''; display: block; width: 40%; height: 100%; border-radius: 2px; background: #d7ff3a;
+        animation: splash-run 1.1s ease-in-out infinite;
+      }
+      #splash.leaving .line { opacity: 0; }
+      .brand.waiting, .brand.waiting * { color: transparent !important; }
+      @keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @media (prefers-reduced-motion: reduce) { #splash .line::after { animation: none; width: 100%; } }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true"><div class="word"><b>L</b>ongcut</div><div class="line"></div></div>
+    <script>
+      (function () {
+        var splash = document.getElementById('splash');
+        var shown = Date.now();
+        var done = false;
+        // show the word once its font is there (or after a moment anyway), no flash of another font
+        var reveal = function () { splash.classList.add('fonts'); };
+        if (document.fonts && document.fonts.load) document.fonts.load('italic 900 64px "Barlow Condensed"').then(reveal, reveal);
+        setTimeout(reveal, 400);
+        // The app calls this when the map is ready. The big word flies into the logo top left.
+        window.__longcutReady = function () {
+          if (done) return;
+          done = true;
+          // stay at least a short moment, so it doesn't just blink on fast starts
+          setTimeout(leave, Math.max(0, 500 - (Date.now() - shown)));
+        };
+        function leave() {
+          var word = splash.querySelector('.word');
+          var brand = document.querySelector('.brand');
+          var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          splash.classList.add('leaving');
+          if (brand && !still) {
+            var a = word.getBoundingClientRect();
+            var b = brand.getBoundingClientRect();
+            var scale = parseFloat(getComputedStyle(brand).fontSize) / 64;
+            var dx = b.left + b.width / 2 - (a.left + a.width / 2);
+            var dy = b.top + b.height / 2 - (a.top + a.height / 2);
+            brand.classList.add('waiting');
+            word.style.transition = 'transform 0.55s cubic-bezier(0.6, 0, 0.2, 1)';
+            word.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+            setTimeout(function () { brand.classList.remove('waiting'); splash.remove(); }, 580);
+          } else {
+            word.style.opacity = '0';
+            setTimeout(function () { splash.remove(); }, 500);
+          }
+        }
+        // never hold the app back: after 4 s the panel can be used, map or not
+        setTimeout(window.__longcutReady, 4000);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
