@@ -33,6 +33,8 @@ const MAX_STEPS = 7;
  * routes are in); this only caps the hard ones. Quality comes first, so it is not tight.
  */
 const REQUEST_BUDGET = 40;
+/** Routes this good (score) are worth showing without searching further. */
+const GOOD_SCORE = 0.15;
 /** Extra requests, once, when the budget gave fewer than 3 routes (hard places: rivers, motorways). */
 const EXTRA_BUDGET = 20;
 /** After this long, stop refining and show the best routes found so far. */
@@ -410,7 +412,7 @@ export async function planRoutes(
       budget.left = EXTRA_BUDGET;
     }
     const roundReq = { ...req, variation: base + round };
-    // As soon as 3 good routes are in (at most one short), stop the other searches:
+    // As soon as 3 really good routes are in, stop the other searches:
     // fewer requests, so faster and kinder to the route server.
     const stop = new AbortController();
     await Promise.all(
@@ -419,7 +421,8 @@ export async function planRoutes(
         if (!a) return;
         found.push(toCandidate(a.segments, target, req, t.label));
         const now = pick(1);
-        if (now.length === 3 && now.filter(isShort).length === 0) stop.abort();
+        // only stop early when all three are really good, not just the right length
+        if (now.length === 3 && now.every((c) => !isShort(c) && c.route.score <= GOOD_SCORE)) stop.abort();
       }),
     );
     chosen = best();
