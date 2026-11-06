@@ -153,7 +153,11 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 .sheet-handle span { width: 40px; height: 5px; border-radius: 3px; background: var(--muted); opacity: 0.55; }
 .sheet-handle:active { cursor: grabbing; }
-.sheet.collapsed { gap: 8px; }
+.sheet.collapsed { gap: 8px; touch-action: none; }
+@media (max-width: 899px) {
+  /* a little more room under a hidden panel, away from the iPhone's home bar */
+  .sheet.collapsed { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + 120px); }
+}
 .sheet-summary {
   display: flex; align-items: center; gap: 10px;
   min-height: 44px; padding: 0 4px;
@@ -361,7 +365,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 
 /* Go to my location, like the button in Google Maps */
 .locate-btn {
-  position: absolute; z-index: 3;
+  position: absolute; z-index: 5; /* above the panel, so it is never hidden behind it */
   right: var(--gutter-r); bottom: 24px;
   width: 48px; height: 48px;
   display: grid; place-items: center;

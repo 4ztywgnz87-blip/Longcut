@@ -89,9 +89,10 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
   }, []);
 
   // Redraw on any change. Fit the view when the routes or points change, and when the
-  // panel changes size while a route is shown (so the route stays centred). Without a
-  // route the map stays put, so hiding the panel doesn't make it jump.
-  const padKey = routes.length ? `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}` : '';
+  // panel changes size while a route or a start and finish are shown (so they stay
+  // centred). With a single point the map stays put, so hiding the panel doesn't jump.
+  const twoPoints = !!start && !!end && (start[0] !== end[0] || start[1] !== end[1]);
+  const padKey = routes.length || twoPoints ? `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}` : '';
   const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${end}|${padKey}`;
   const lastFit = useRef('');
   useEffect(() => {

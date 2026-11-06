@@ -6,7 +6,7 @@ import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
 import Segmented from './components/Segmented';
 import PlanningAnimation from './components/PlanningAnimation';
-import SheetHandle from './components/SheetHandle';
+import SheetHandle, { useSheetDrag } from './components/SheetHandle';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
@@ -56,6 +56,9 @@ export default function App() {
   // panels can be swiped down to see more of the map
   const [collapsed, setCollapsed] = useState(false);
   const [dragY, setDragY] = useState<number | null>(null);
+  // when the panel is hidden, all of it can be dragged up (a bigger target than the bar)
+  const panelDrag = useSheetDrag(collapsed, setCollapsed, (dy) => setDragY(dy));
+  const collapsedDrag = collapsed ? panelDrag : {};
   const sheetDrag: React.CSSProperties | undefined =
     dragY == null ? undefined : { transform: `translateY(${dragY}px)`, transition: 'none' };
   const [routes, setRoutes] = useState<PlannedRoute[]>([]);
@@ -414,6 +417,7 @@ export default function App() {
         <form
           className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''}`}
           style={sheetDrag}
+          {...collapsedDrag}
           ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
           onSubmit={(e) => {
             e.preventDefault();
@@ -598,7 +602,7 @@ export default function App() {
       )}
 
       {view.k === 'results' && r && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
           <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
@@ -708,7 +712,7 @@ export default function App() {
       )}
 
       {view.k === 'savedRoute' && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet}>
+        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
           <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
           <div className="sheet-head">
             <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>
