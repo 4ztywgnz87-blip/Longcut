@@ -36,7 +36,7 @@
         transform-origin: center; will-change: transform;
       }
       #splash .wm .l { color: #d7ff3a; opacity: 0; }
-      #splash .wm .rest { position: relative; display: inline-block; transform: translateX(-8px); will-change: transform; }
+      #splash .wm .rest { position: relative; display: inline-block; }
       #splash .wm .cover { position: absolute; top: -20%; bottom: -20%; left: 0; width: 110%; background: #111113; will-change: transform; }
       #splash .wm .base { display: inline-block; width: 0; height: 0; }
       #splash .wait { position: absolute; left: 50%; top: calc(50% + 52px); width: 36px; height: 3px; margin-left: -18px; border-radius: 2px; overflow: hidden; background: rgba(255, 255, 255, 0.07); opacity: 0; transition: opacity 0.4s ease; }
@@ -51,7 +51,7 @@
     <div id="splash" aria-hidden="true">
       <div class="bg"></div>
       <svg>
-        <mask id="splash-l" maskUnits="userSpaceOnUse" x="-5000" y="-5000" width="10000" height="10000"><path fill="#fff" stroke="#fff" stroke-linejoin="round" stroke-width="0" d="M8 15 90 685Q91 692 95.5 696Q100 700 106 700H260Q266 700 269.5 696Q273 692 272 685L209 166Q207 161 213 161H403Q410 161 413.5 157Q417 153 416 146L400 15Q397 0 383 0H20Q14 0 10.5 4Q7 8 8 15Z" /></mask>
+        
         <g class="mark">
           <path class="route stem" /><path class="route foot" />
           <circle class="start" r="0" /><circle class="finish" r="0" />
@@ -65,7 +65,7 @@
         var splash = document.getElementById('splash');
         var $ = function (q) { return splash.querySelector(q); };
         var mark = $('.mark'), stem = $('.stem'), foot = $('.foot');
-        var dotA = $('.start'), dotB = $('.finish'), clip = $('#splash-l path');
+        var dotA = $('.start'), dotB = $('.finish');
         var wm = $('.wm'), slotL = $('.wm .l'), rest = $('.wm .rest'), cover = $('.wm .cover');
         // the app builds its map once the letter shape is done (that work would make this stutter)
         var shapeDone; window.__longcutSplash = { shapeDone: new Promise(function (r) { shapeDone = r; }) };
@@ -99,8 +99,12 @@
         // foot 161 thick. Stem top, bottom corner, foot end. The ends reach a little past the
         // letter; a mask with the exact letter shape trims them, so it ends as the real letter.
         var TOP = [183.1, 700], KNEE = [107.3, 80.5], TIP = [408, 80.5];
-        var STEM_TO = [[184.6, 712], [96.3, -12]], FOOT_TO = [[40, 80.5], [372, 80.5], [430, 80.5]];
-        var STEM_W = 186, FOOT_W = 167, FONT = 64;
+        // The drawn L lands just inside the real letter, with its round ends and bend: a softer
+        // twin of the letter. The real letter then fades in over it (no shape is cut or sharpened).
+        // One even line weight (165) keeps the twin clean; the letter's slightly heavier stem
+        // simply arrives in the cross-fade.
+        var STEM_TO = [[173, 617.5], [107.3, 80.5]], FOOT_TO = [[107.3, 80.5], [250, 80.5], [325.5, 80.5]];
+        var STEM_W = 165, FOOT_W = 165, FONT = 64;
 
         var g; // geometry on screen
         var iconScale = Math.min(136, innerHeight * 0.2) / ICON_H; // the icon about 100 px tall
@@ -156,7 +160,8 @@
         var circle = function (el, c, r) { el.setAttribute('cx', c[0]); el.setAttribute('cy', c[1]); el.setAttribute('r', Math.max(0, r)); };
 
         // timeline (ms): draw the route, move into place, become the letter, the word follows
-        var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1150, shapeLen: 560, letters: 1560, lettersLen: 480 };
+        var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1050, shapeLen: 380,
+          letterIn: 1300, letterInLen: 240, drawOut: 1420, drawOutLen: 240, letters: 1480, lettersLen: 480 };
         var END = T.letters + T.lettersLen;
         var appReady = false, wordDone = false, left = false, measured = false, held = 0;
         var fontIn = false;
@@ -188,15 +193,9 @@
             var P = g.icon.map(function (p, i) { return apply(A, i >= 7 ? mix(p, FLAT[i - 7], flat) : p); });
             var stemP = P.slice(0, 4).map(function (p, i) { return mix(p, g.stemTo[i], m2); });
             var footP = P.slice(3).map(function (p, i) { return mix(p, g.footTo[i], m2); });
-            // the bend stays one round bend (stem and foot meet in the corner) until late;
-            // then the corner sharpens, inside the shrinking mask
-            // (the corner fills in last, once the mask hugs the letter, so it grows square from inside)
-            var sharp = inOut(clamp((m2 - 0.72) / 0.28)), K = mix(P[3], g.knee, m2);
-            stemP[3] = mix(K, stemP[3], sharp); footP[0] = mix(K, footP[0], sharp);
             // it gains the letter's weight gradually while moving and bending
             var w0 = ICON_W * g.iconScale * s, q = 0.65 * m1 + 0.35 * m2;
             var ws = lerp(w0, STEM_W * g.k, q), wf = lerp(w0, FOOT_W * g.k, q);
-            wf = lerp(ws, wf, sharp); // one thickness while it's one bend
             stem.setAttribute('d', curve(stemP)); foot.setAttribute('d', curve(footP));
             stem.setAttribute('stroke-width', ws); foot.setAttribute('stroke-width', wf);
             if (pDraw < 1) {
@@ -216,30 +215,24 @@
             var ring = (0.5 + 0.5 * pRing) * gone * (pRing > 0 ? 1 : 0);
             circle(dotB, P[9], RING_R * g.iconScale * s * ring);
             dotB.setAttribute('stroke-width', RING * g.iconScale * s * ring);
-            // The letter shape with a margin around it, the margin shrinking to nothing: it shaves
-            // the round ends flat bit by bit and leaves exactly the letter.
-            if (m2 >= 0.3) {
-              // starts just outside the round ends (nothing is cut at first), then closes in evenly
-              var margin = 100 * (1 - inOut(clamp((m2 - 0.3) / 0.45))); // font units, 0 from 75 %
-              clip.setAttribute('transform', g.clipT);
-              clip.setAttribute('stroke-width', 2 * margin);
-              mark.setAttribute('mask', 'url(#splash-l)');
-            }
+            // Hand over by cross-fade, timed with the end of the move: the real letter fades in
+            // over the drawing (its square corners appear softly), then the drawing fades out
+            // underneath. Nothing changes shape suddenly.
+            var aIn = inOut(clamp((t - T.letterIn) / T.letterInLen)), aOut = inOut(clamp((t - T.drawOut) / T.drawOutLen));
+            if (measured) slotL.style.opacity = aIn;
+            // the word comes in front of the drawing once the icon has arrived (before that its
+            // cover would hide the icon passing over it)
+            wm.style.zIndex = t >= T.letterIn ? 2 : '';
+            mark.style.opacity = 1 - aOut;
             // the other letters follow
             if (!lettersOn && t >= T.letters) {
               lettersOn = true;
               var ease = T.lettersLen * slow + 'ms cubic-bezier(0.2, 0.8, 0.2, 1)';
-              rest.style.transition = cover.style.transition = 'transform ' + ease;
-              rest.style.transform = 'none'; cover.style.transform = 'translateX(100%)';
+              cover.style.transition = 'transform ' + ease;
+              cover.style.transform = 'translateX(100%)';
             }
-            // the drawn L is now exactly the letter: hand over
-            // hand over: the real letter is already underneath; the drawing fades away on top of it,
-            // so even a renderer that draws the letter a hair differently shows no jump
-            if (m2 >= 1 && !handed) {
+            if (aOut >= 1 && !handed) {
               handed = true;
-              slotL.style.opacity = 1;
-              mark.style.transition = 'opacity ' + 240 * slow + 'ms ease';
-              mark.style.opacity = 0;
               shapeDone();
             }
             if (t < END + 150) requestAnimationFrame(frame);

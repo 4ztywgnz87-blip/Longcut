@@ -130,10 +130,11 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
 - Start screen: inline in `index.html` (shows before any JS). The icon's route draws itself,
   moves as a whole onto the L slot (affine map: start→stem top, icon corner→corner, end of the flat foot line→foot end;
   the finish upturn flattens while the ring shrinks,
-  gaining the letter's weight), then bends into the L. Ends stay round; stem and foot stay one
-  round bend until 60 %, then the corner sharpens. A mask = the real glyph outline plus a
-  margin (stroke) that shrinks to 0 shaves the round ends flat → pixel-identical to the text L,
-  then swapped. The SVG drawing sits above the letters' cover (z-index). Shape phase 560 ms: ends shaved by the mask margin (100→0 by 75 %), corner fills last (72–100 %), dots/ring shrink gently (inOut); hand-over = text under, drawing fades out over 240 ms. Letters are revealed by a sliding cover (transform), bg fades via opacity, word
+  gaining the letter's weight), then bends into a **soft twin** of the L: round ends and bend,
+  one line weight (165 units), lying just inside the real glyph. Hand-over is a **cross-fade
+  in the same timeline** (no masks, no sharpening): the text L fades in over the drawing
+  (1300–1540 ms; the word gets z-index above the SVG from then), then the drawing fades out
+  (1420–1660). Measured per 10 ms: no spikes. Dots/ring shrink gently (inOut). Letters are revealed by a sliding cover (transform; the letters themselves don't slide, or they'd overlap the L), bg fades via opacity, word
   flies into the logo (transform): all compositor-safe. The **map is only built after the
   shape is done** (`window.__longcutSplash.shapeDone`, App `mapOn`), because MapLibre's main-
   thread work made the morph stutter; its style is preloaded. Font: animation holds before the

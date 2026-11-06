@@ -758,7 +758,7 @@ export default function App() {
               onChange={setPreferGreen}
               options={[
                 [false, 'Any'],
-                [true, 'Parks & forest'],
+                [true, 'Green'],
               ]}
             />
             <Segmented
