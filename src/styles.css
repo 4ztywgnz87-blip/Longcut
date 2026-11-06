@@ -48,6 +48,10 @@ body {
   overscroll-behavior: none;
 }
 button, input { font: inherit; color: inherit; }
+/* Feels like an app: labels and buttons can't be selected or long-pressed as text.
+   Text you type stays selectable. */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
 button { cursor: pointer; }
 button:disabled { opacity: 0.35; cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

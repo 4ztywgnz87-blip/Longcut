@@ -211,7 +211,7 @@ export default function App() {
           r.reason === 'too-short'
             ? { kind: 'too-short', shortestKm: r.shortestKm }
             : r.reason === 'busy'
-              ? { kind: 'message', text: 'The route server is busy right now. Wait a minute and try again.' }
+              ? { kind: 'message', text: 'Finding routes is taking longer than usual right now. Try again in a minute.' }
               : { kind: 'message', text: 'No route of this length found around these points. Try a slightly different distance or a nearby start.' },
         );
       }
@@ -220,7 +220,7 @@ export default function App() {
       const busy = e instanceof RouterError && e.busy;
       setProblem({
         kind: 'message',
-        text: busy ? 'The route server is busy right now. Wait a minute and try again.' : 'The route service did not answer. Check your connection and try again in a moment.',
+        text: busy ? 'Finding routes is taking longer than usual right now. Try again in a minute.' : 'Couldn’t reach the route planner. Check your connection and try again.',
       });
     } finally {
       clearInterval(tick);
@@ -584,7 +584,7 @@ export default function App() {
                 ? `Trying detours for ${km} km`
                 : elapsed < 10
                   ? 'Picking the quietest ones'
-                  : 'The route server is slow today, still trying…'}
+                  : 'Taking a bit longer than usual…'}
           </p>
         </div>
       )}
