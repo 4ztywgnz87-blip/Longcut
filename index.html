@@ -15,57 +15,97 @@
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
     <title>Longcut</title>
     <!-- Start screen: part of the page itself, so it shows at once while the app loads
-         behind it. It never makes you wait: it leaves as soon as the map is ready. -->
+         behind it. The app icon draws its route, turns into the L of LONGCUT, and once the
+         map is ready the word flies into the logo top left. Never waits longer than 4 s. -->
     <style>
       #splash {
         position: fixed; inset: 0; z-index: 50;
-        display: grid; place-items: center; align-content: center; gap: 18px;
+        display: grid; place-items: center; align-content: center; gap: 22px;
         background: #111113;
         transition: background-color 0.5s ease;
         pointer-events: none;
       }
       #splash.leaving { background-color: rgba(17, 17, 19, 0); }
+      #splash .stage { position: relative; display: grid; place-items: center; height: 150px; }
+      #splash .icon { position: absolute; left: 50%; top: 50%; width: 132px; height: 150px; margin: -75px 0 0 -66px; transform-origin: center; will-change: transform, opacity; }
+      #splash .route { fill: none; stroke: #d7ff3a; stroke-width: 44; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: splash-draw 0.8s 0.1s cubic-bezier(0.5, 0, 0.3, 1) forwards; }
+      #splash .start { fill: #f3f3f5; }
+      #splash .finish { fill: #111113; stroke: #f3f3f5; stroke-width: 22; opacity: 0; transform-origin: 388px 322px; transform: scale(0.4); animation: splash-pop 0.25s 0.8s ease-out forwards; }
+      @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+      @keyframes splash-pop { to { opacity: 1; transform: scale(1); } }
       #splash .word {
         font: italic 900 64px/1 'Barlow Condensed', 'Arial Narrow', sans-serif;
         letter-spacing: -0.01em; text-transform: uppercase; color: #f3f3f5;
-        opacity: 0; transition: opacity 0.25s ease;
-        transform-origin: center; will-change: transform;
+        white-space: nowrap; transform-origin: center; will-change: transform;
       }
-      #splash.fonts .word { opacity: 1; }
-      #splash .word b { color: #d7ff3a; font-weight: inherit; }
-      #splash .line { width: 120px; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.08); transition: opacity 0.2s ease; }
-      #splash .line::after {
-        content: ''; display: block; width: 40%; height: 100%; border-radius: 2px; background: #d7ff3a;
-        animation: splash-run 1.1s ease-in-out infinite;
-      }
-      #splash.leaving .line { opacity: 0; }
-      .brand.waiting, .brand.waiting * { color: transparent !important; }
+      #splash .word b { color: #d7ff3a; font-weight: inherit; display: inline-block; opacity: 0; }
+      #splash .word .rest { display: inline-block; clip-path: inset(0 100% 0 0); }
+      #splash.word-on .word b { opacity: 1; transition: opacity 0.2s 0.3s ease; }
+      #splash.word-on .word .rest { clip-path: inset(0 0 0 0); transition: clip-path 0.45s 0.3s cubic-bezier(0.3, 0, 0.2, 1); }
+      #splash .line { width: 120px; height: 4px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.08); opacity: 0; transition: opacity 0.3s ease; }
+      #splash.word-on .line { opacity: 1; transition-delay: 0.6s; }
+      #splash.leaving .line { opacity: 0; transition-delay: 0s; }
+      #splash .line::after { content: ''; display: block; width: 40%; height: 100%; border-radius: 2px; background: #d7ff3a; animation: splash-run 1.1s ease-in-out infinite; }
       @keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-      @media (prefers-reduced-motion: reduce) { #splash .line::after { animation: none; width: 100%; } }
+      .brand.waiting, .brand.waiting * { color: transparent !important; }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .route { animation: none; stroke-dashoffset: 0; }
+        #splash .finish { animation: none; opacity: 1; transform: none; }
+        #splash .line::after { animation: none; width: 100%; }
+      }
     </style>
   </head>
   <body>
-    <div id="splash" aria-hidden="true"><div class="word"><b>L</b>ongcut</div><div class="line"></div></div>
+    <div id="splash" aria-hidden="true">
+      <div class="stage">
+        <svg class="icon" viewBox="96 58 320 364">
+          <path class="route" pathLength="1" d="M150 112 C 124 220, 116 320, 166 366 C 216 408, 300 392, 344 368 C 368 354, 380 340, 388 322" />
+          <circle class="start" cx="150" cy="112" r="40" />
+          <circle class="finish" cx="388" cy="322" r="40" />
+        </svg>
+        <div class="word"><b>L</b><span class="rest">ongcut</span></div>
+      </div>
+      <div class="line"></div>
+    </div>
     <script>
       (function () {
         var splash = document.getElementById('splash');
-        var shown = Date.now();
-        var done = false;
-        // show the word once its font is there (or after a moment anyway), no flash of another font
-        var reveal = function () { splash.classList.add('fonts'); };
-        if (document.fonts && document.fonts.load) document.fonts.load('italic 900 64px "Barlow Condensed"').then(reveal, reveal);
-        setTimeout(reveal, 400);
-        // The app calls this when the map is ready. The big word flies into the logo top left.
-        window.__longcutReady = function () {
-          if (done) return;
-          done = true;
-          // stay at least a short moment, so it doesn't just blink on fast starts
-          setTimeout(leave, Math.max(0, 500 - (Date.now() - shown)));
-        };
-        function leave() {
-          var word = splash.querySelector('.word');
+        var icon = splash.querySelector('.icon');
+        var word = splash.querySelector('.word');
+        var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var t0 = Date.now();
+        var appReady = false, wordShown = false, left = false;
+
+        // 1. the icon draws its route (CSS), 2. then it turns into the L of the word
+        var fontsReady = document.fonts && document.fonts.load
+          ? document.fonts.load('italic 900 64px "Barlow Condensed"').catch(function () {})
+          : Promise.resolve();
+        var timeout = new Promise(function (r) { setTimeout(r, 600); });
+        Promise.all([Promise.race([fontsReady, timeout]), new Promise(function (r) { setTimeout(r, still ? 0 : 1050); })]).then(toWord);
+
+        function toWord() {
+          var L = word.querySelector('b').getBoundingClientRect();
+          var I = icon.getBoundingClientRect();
+          // the icon shrinks onto the L (about the height of a capital)
+          var scale = (L.height * 0.78) / I.height;
+          var dx = L.left + L.width * 0.58 - (I.left + I.width / 2); // the L leans right (italic)
+          var dy = L.top + L.height / 2 - (I.top + I.height / 2);
+          icon.style.transition = 'transform 0.45s cubic-bezier(0.6, 0, 0.3, 1), opacity 0.2s 0.3s ease';
+          icon.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
+          icon.style.opacity = '0';
+          splash.classList.add('word-on');
+          setTimeout(function () { wordShown = true; maybeLeave(); }, still ? 0 : 800);
+        }
+
+        // 3. when the map is ready, the word flies into the logo top left
+        window.__longcutReady = function () { appReady = true; maybeLeave(); };
+        // never hold the app back: after 4 s the panel can be used, map or not
+        setTimeout(function () { appReady = true; wordShown = true; maybeLeave(); }, 4000);
+
+        function maybeLeave() {
+          if (left || !appReady || !wordShown) return;
+          left = true;
           var brand = document.querySelector('.brand');
-          var still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
           splash.classList.add('leaving');
           if (brand && !still) {
             var a = word.getBoundingClientRect();
@@ -78,12 +118,11 @@
             word.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(' + scale + ')';
             setTimeout(function () { brand.classList.remove('waiting'); splash.remove(); }, 580);
           } else {
+            word.style.transition = 'opacity 0.4s';
             word.style.opacity = '0';
-            setTimeout(function () { splash.remove(); }, 500);
+            setTimeout(function () { if (brand) brand.classList.remove('waiting'); splash.remove(); }, 500);
           }
         }
-        // never hold the app back: after 4 s the panel can be used, map or not
-        setTimeout(window.__longcutReady, 4000);
       })();
     </script>
     <div id="root"></div>

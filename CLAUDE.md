@@ -114,9 +114,10 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   Map: active route volt, alternatives grey, busy stretches red, unpaved dashed.
 - Glass panels: `rgba(17,17,19,0.3)` + `blur(6px)`. UI text is not selectable (inputs are).
 - Planning screen: animated route drawing + step text.
-- Start screen: inline in `index.html` (shows before any JS). Big LONGCUT + running bar;
-  when the map is ready App calls `window.__longcutReady()` and the word flies into the
-  logo pill (min 0.5 s on screen, max 4 s so it never blocks).
+- Start screen: inline in `index.html` (shows before any JS). The app icon draws its route
+  (~1 s), shrinks into the L of LONGCUT while the other letters slide in, then a running bar
+  shows while loading. When the map is ready App calls `window.__longcutReady()` and the word
+  flies into the logo pill. On screen at least ~1.8 s, at most 4 s.
 
 ## Commands
 
