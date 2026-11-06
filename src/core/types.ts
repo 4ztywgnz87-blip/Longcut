@@ -71,6 +71,8 @@ export interface PlanRequest {
   variation?: number;
   /** Stops the search (the Cancel button). */
   signal?: AbortSignal;
+  /** Called with the first really good route as soon as it's found (shown while the search goes on). */
+  onProgress?: (routes: PlannedRoute[]) => void;
 }
 
 export interface RouteStats {

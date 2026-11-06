@@ -12,7 +12,7 @@ import SwipeRow from './components/SwipeRow';
 import { useHold } from './components/useHold';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
-import { plan } from './lib/planService';
+import { plan, prepare } from './lib/planService';
 import { fromRuns, savedRoutes, settings, toRuns } from './lib/storage';
 import type { SavedRoute } from './lib/storage';
 import { downloadFile, FIT_TYPE } from './lib/share';
@@ -98,6 +98,8 @@ export default function App() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [swipeOpen, setSwipeOpen] = useState<string | null>(null);
   const planCtl = useRef<AbortController | null>(null);
+  // the first route is shown while the others are still being found
+  const [pending, setPending] = useState(false);
   const planBack = useRef<View>({ k: 'edit' });
   const [gps, setGps] = useState<LngLat | null>(null);
   const [accuracy, setAccuracy] = useState(0);
@@ -242,6 +244,18 @@ export default function App() {
   // --- planning ------------------------------------------------------------
   const end = loop ? from : to;
 
+  // Get ready while start and finish are being chosen: the route planner's profile and the
+  // direct route are fetched in the background, so pressing Plan skips those waits.
+  const fromC = from?.coord;
+  const endC = end?.coord;
+  useEffect(() => {
+    if (view.k !== 'edit') return;
+    const t = setTimeout(() => prepare(fromC ?? null, endC ?? null, { unpavedOk, preferGreen, preferLit }), 400);
+    return () => clearTimeout(t);
+    // only re-run when the actual places or options change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromC?.[0], fromC?.[1], endC?.[0], endC?.[1], unpavedOk, preferGreen, preferLit, view.k]);
+
   /**
    * Plans routes. `more` = "New routes": keep the earlier sets so you can go back.
    * Places and distance are passed in, so a saved route can plan straight away.
@@ -257,8 +271,24 @@ export default function App() {
     planBack.current = opts.more ? view : { k: 'edit' };
     setView({ k: 'planning' });
     setVariation(opts.variation);
+    planCtl.current?.abort(); // a search still filling in tabs stops
     const ctl = new AbortController();
     planCtl.current = ctl;
+    setPending(false);
+    // "New routes" adds a set; a fresh plan starts over
+    const baseSets = opts.more && planBack.current.k === 'results' ? sets : [];
+    let shownEarly = false;
+    const show = (routes: PlannedRoute[], final: boolean) => {
+      const next = [...baseSets, routes];
+      setSets(next);
+      setSetIdx(next.length - 1);
+      if (!shownEarly) {
+        setActive(0);
+        setView({ k: 'results' });
+      }
+      shownEarly = true;
+      setPending(!final);
+    };
     const t0 = Date.now();
     const tick = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 250);
     // when "New routes" fails, stay on the routes you had
@@ -279,14 +309,15 @@ export default function App() {
         prefs: { unpavedOk, preferGreen, preferLit },
         variation: opts.variation,
         signal: ctl.signal,
+        onProgress: (routes) => {
+          if (!ctl.signal.aborted) show(routes, false);
+        },
       });
       if (ctl.signal.aborted) return;
       if (r.ok) {
-        const next = opts.more && planBack.current.k === 'results' ? [...sets, r.routes] : [r.routes];
-        setSets(next);
-        setSetIdx(next.length - 1);
-        setActive(0);
-        setView({ k: 'results' });
+        show(r.routes, true);
+      } else if (shownEarly) {
+        setPending(false);
       } else if (r.reason === 'too-short') {
         setView({ k: 'edit' });
         setProblem({ kind: 'too-short', shortestKm: r.shortestKm });
@@ -299,6 +330,11 @@ export default function App() {
       }
     } catch (e) {
       if (ctl.signal.aborted) return;
+      if (shownEarly) {
+        // keep the route(s) already on screen
+        setPending(false);
+        return setToast('Couldn’t find more routes right now.', 'results');
+      }
       const busy = e instanceof RouterError && e.busy;
       fail(busy ? 'Finding routes is taking longer than usual right now. Try again in a minute.' : 'Couldn’t reach the route planner. Check your connection and try again.');
     } finally {
@@ -779,7 +815,17 @@ export default function App() {
         <div className={`sheet results-sheet ${sheetClass}`} style={sheetStyle} ref={sheet} {...collapsedDrag}>
           {handle}
           <div className="sheet-head" data-peek>
-            <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => {
+                if (pending) {
+                  planCtl.current?.abort();
+                  setPending(false);
+                }
+                setView({ k: 'edit' });
+              }}
+            >
               <Icon name="back" size={18} /> Edit
             </button>
             <div className="tabs" role="tablist" aria-label="Routes">
@@ -795,6 +841,14 @@ export default function App() {
                   {fmtKm(x.stats.length)}
                 </button>
               ))}
+              {pending && setIdx === sets.length - 1 &&
+                Array.from({ length: Math.max(0, 3 - routes.length) }, (_, i) => (
+                  <span key={`p${i}`} className="tab pending" aria-label="Finding more routes">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                ))}
             </div>
           </div>
 

@@ -378,13 +378,17 @@ export async function planRoutes(
    * The best 3 different routes. At most `shorts` of them may be short (those get an
    * out-and-back at the finish): preferably 1, 2 only when nothing better came out.
    */
-  const pick = (shorts: number) => {
-    const ranked = found
+  // A really good route found early is shown right away (req.onProgress). The final choice
+  // is made as usual; the shown route (or a better, very similar one) stays in the first tab.
+  const shown: Candidate[] = [];
+  const ranked = () =>
+    found
       .filter((c) => c.route.stats.length >= target - maxShort && c.route.stats.length <= target + maxOver)
       .sort((x, y) => x.route.score - y.route.score);
+  const pick = (shorts: number) => {
     const out: Candidate[] = [];
     let n = 0;
-    for (const c of ranked) {
+    for (const c of ranked()) {
       if (isShort(c) && n >= shorts) continue;
       if (!out.every((o) => similarity(c, o) <= MAX_SIMILARITY)) continue;
       out.push(c);
@@ -420,12 +424,24 @@ export async function planRoutes(
         const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true), stop.signal, calib, i === 0, budget);
         if (!a) return;
         found.push(toCandidate(a.segments, target, req, t.label));
+        if (!shown.length && req.onProgress && !req.signal?.aborted) {
+          const first = ranked().find((c) => !isShort(c) && c.route.score <= GOOD_SCORE);
+          if (first) {
+            shown.push(first);
+            req.onProgress([first.route]);
+          }
+        }
         const now = pick(1);
         // only stop early when all three are really good, not just the right length
         if (now.length === 3 && now.every((c) => !isShort(c) && c.route.score <= GOOD_SCORE)) stop.abort();
       }),
     );
     chosen = best();
+  }
+  // keep the first tab what it was: the shown route, or the chosen one most like it
+  if (shown.length && chosen.length) {
+    const lead = chosen.includes(shown[0]) ? shown[0] : chosen.reduce((a, c) => (similarity(c, shown[0]) > similarity(a, shown[0]) ? c : a));
+    chosen = [lead, ...chosen.filter((c) => c !== lead)];
   }
   if (!chosen.length) {
     if (busy) return { ok: false, reason: 'busy' };

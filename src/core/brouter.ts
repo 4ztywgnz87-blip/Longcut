@@ -71,6 +71,11 @@ export class BRouterRouter implements Router {
       .replace(/^assign prefer_lit\s*=\s*\w+/m, `assign prefer_lit    = ${ro.preferLit ? 'true' : 'false'}`);
   }
 
+  /** Upload the profile ahead of time, so the first plan doesn't wait for it. */
+  warm(ro: RouteOptions): Promise<unknown> {
+    return this.profileId(ro).catch(() => undefined);
+  }
+
   private profileId(ro: RouteOptions): Promise<string> {
     const text = this.profileFor(ro);
     let id = this.profileIds.get(text);

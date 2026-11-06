@@ -51,6 +51,7 @@ const NIEUWKERKEN = { latitude: 51.1934, longitude: 4.178 };
   await page.waitForSelector('.planning-sheet');
   await shot('4-planning');
   await page.waitForSelector('.results-sheet', { timeout: 90000 });
+  await page.waitForFunction(() => !document.querySelector('.tab.pending'), null, { timeout: 90000 }); // all routes in
   console.log('plan seconds', ((Date.now() - t0) / 1000).toFixed(1));
   await page.waitForTimeout(1200);
   const km = await page.locator('.big-km b').textContent();
@@ -83,6 +84,7 @@ const NIEUWKERKEN = { latitude: 51.1934, longitude: 4.178 };
   await page.locator('.place-main').first().click();
   await page.getByRole('button', { name: /^Plan / }).click();
   await page.waitForSelector('.results-sheet', { timeout: 90000 });
+  await page.waitForFunction(() => !document.querySelector('.tab.pending'), null, { timeout: 90000 }); // all routes in
 
   step('save');
   await page.getByRole('button', { name: /^Save$/ }).click();
@@ -105,6 +107,7 @@ const NIEUWKERKEN = { latitude: 51.1934, longitude: 4.178 };
   await page.locator('#km').blur();
   await page.getByRole('button', { name: /^Plan / }).click();
   await page.waitForSelector('.results-sheet', { timeout: 90000 });
+  await page.waitForFunction(() => !document.querySelector('.tab.pending'), null, { timeout: 90000 }); // all routes in
   console.log('loop km', await page.locator('.big-km b').textContent());
   await shot('9-loop');
 

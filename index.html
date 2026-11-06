@@ -156,7 +156,7 @@
         var circle = function (el, c, r) { el.setAttribute('cx', c[0]); el.setAttribute('cy', c[1]); el.setAttribute('r', Math.max(0, r)); };
 
         // timeline (ms): draw the route, move into place, become the letter, the word follows
-        var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1180, shapeLen: 400, letters: 1420, lettersLen: 480 };
+        var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1150, shapeLen: 560, letters: 1560, lettersLen: 480 };
         var END = T.letters + T.lettersLen;
         var appReady = false, wordDone = false, left = false, measured = false, held = 0;
         var fontIn = false;
@@ -171,7 +171,7 @@
             var finish = function () { if (!fontIn) return setTimeout(finish, 50); measure(); slotL.style.opacity = 1; cover.style.display = 'none'; rest.style.transform = 'none'; mark.style.display = 'none'; shapeDone(); wordDone = true; maybeLeave(); };
             return finish();
           }
-          var lens = null, lettersOn = false;
+          var lens = null, lettersOn = false, handed = false;
           function frame(now) {
             var raw = (now - t0) / slow, t = raw - held;
             // the letter needs its font: hold the drawn icon until it's there
@@ -190,7 +190,8 @@
             var footP = P.slice(3).map(function (p, i) { return mix(p, g.footTo[i], m2); });
             // the bend stays one round bend (stem and foot meet in the corner) until late;
             // then the corner sharpens, inside the shrinking mask
-            var sharp = inOut(clamp((m2 - 0.6) / 0.4)), K = mix(P[3], g.knee, m2);
+            // (the corner fills in last, once the mask hugs the letter, so it grows square from inside)
+            var sharp = inOut(clamp((m2 - 0.72) / 0.28)), K = mix(P[3], g.knee, m2);
             stemP[3] = mix(K, stemP[3], sharp); footP[0] = mix(K, footP[0], sharp);
             // it gains the letter's weight gradually while moving and bending
             var w0 = ICON_W * g.iconScale * s, q = 0.65 * m1 + 0.35 * m2;
@@ -210,15 +211,16 @@
               stem.style.visibility = foot.style.visibility = 'visible';
             }
             // the dots ride along and are taken in while it moves
-            var gone = 1 - out(clamp((m1 - 0.35) / 0.65));
+            var gone = 1 - inOut(clamp((m1 - 0.15) / 0.75)); // gently, not all at once
             circle(dotA, P[0], DOT * g.iconScale * s * pDot * gone);
             var ring = (0.5 + 0.5 * pRing) * gone * (pRing > 0 ? 1 : 0);
             circle(dotB, P[9], RING_R * g.iconScale * s * ring);
             dotB.setAttribute('stroke-width', RING * g.iconScale * s * ring);
             // The letter shape with a margin around it, the margin shrinking to nothing: it shaves
             // the round ends flat bit by bit and leaves exactly the letter.
-            if (m2 >= 0.5) {
-              var margin = 120 * (1 - out((m2 - 0.5) / 0.5)); // font units
+            if (m2 >= 0.3) {
+              // starts just outside the round ends (nothing is cut at first), then closes in evenly
+              var margin = 100 * (1 - inOut(clamp((m2 - 0.3) / 0.45))); // font units, 0 from 75 %
               clip.setAttribute('transform', g.clipT);
               clip.setAttribute('stroke-width', 2 * margin);
               mark.setAttribute('mask', 'url(#splash-l)');
@@ -231,7 +233,15 @@
               rest.style.transform = 'none'; cover.style.transform = 'translateX(100%)';
             }
             // the drawn L is now exactly the letter: hand over
-            if (m2 >= 1) { slotL.style.opacity = 1; mark.style.opacity = 0; shapeDone(); }
+            // hand over: the real letter is already underneath; the drawing fades away on top of it,
+            // so even a renderer that draws the letter a hair differently shows no jump
+            if (m2 >= 1 && !handed) {
+              handed = true;
+              slotL.style.opacity = 1;
+              mark.style.transition = 'opacity ' + 240 * slow + 'ms ease';
+              mark.style.opacity = 0;
+              shapeDone();
+            }
             if (t < END + 150) requestAnimationFrame(frame);
             else { cover.style.display = 'none'; wordDone = true; maybeLeave(); }
           }

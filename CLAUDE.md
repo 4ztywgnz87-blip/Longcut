@@ -70,7 +70,14 @@ exports it to a Garmin watch.
    Routes that are a little short get an **out-and-back at the finish** (`padToTarget`: past the
    finish and back via one extra BRouter call; fallback: back along the route) → `extraM`,
    shown as "Includes N m out and back at the finish".
-5. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
+5. **Early result:** the first route that is non-short and scores ≤ `GOOD_SCORE` is sent via
+   `PlanRequest.onProgress` and shown at once (other tabs show pulsing dots, `pending` in App);
+   the final choice is made as before and that route (or the most similar chosen one) keeps
+   tab 1. Run-to-run variance in which routes are found exists anyway (budget is shared in
+   the order the server answers). `prepare()` (planService) uploads the profile and fetches
+   the direct route while start/finish are being chosen, so Plan skips those waits.
+   No second public BRouter server was found (Nov 2026); own server = the real fix.
+6. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
    "Earlier / Set n of m / Later". `PlanRequest.signal` lets the Cancel button stop a search.
 
 BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, in-session
@@ -122,7 +129,7 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   gaining the letter's weight), then bends into the L. Ends stay round; stem and foot stay one
   round bend until 60 %, then the corner sharpens. A mask = the real glyph outline plus a
   margin (stroke) that shrinks to 0 shaves the round ends flat → pixel-identical to the text L,
-  then swapped. The SVG drawing sits above the letters' cover (z-index). Letters are revealed by a sliding cover (transform), bg fades via opacity, word
+  then swapped. The SVG drawing sits above the letters' cover (z-index). Shape phase 560 ms: ends shaved by the mask margin (100→0 by 75 %), corner fills last (72–100 %), dots/ring shrink gently (inOut); hand-over = text under, drawing fades out over 240 ms. Letters are revealed by a sliding cover (transform), bg fades via opacity, word
   flies into the logo (transform): all compositor-safe. The **map is only built after the
   shape is done** (`window.__longcutSplash.shapeDone`, App `mapOn`), because MapLibre's main-
   thread work made the morph stutter; its style is preloaded. Font: animation holds before the
