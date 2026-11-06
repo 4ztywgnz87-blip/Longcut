@@ -24,7 +24,7 @@
       #splash { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
       #splash .bg { position: absolute; inset: 0; background: #111113; transition: opacity 0.55s cubic-bezier(0.4, 0, 0.2, 1) 0.08s; will-change: opacity; }
       #splash.leaving .bg { opacity: 0; }
-      #splash svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+      #splash svg { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: visible; } /* the drawing stays above the letters' cover */
       #splash .route { fill: none; stroke: #d7ff3a; stroke-linecap: round; stroke-linejoin: round; }
       #splash .cap { fill: #d7ff3a; }
       #splash .start { fill: #f3f3f5; }
@@ -51,10 +51,9 @@
     <div id="splash" aria-hidden="true">
       <div class="bg"></div>
       <svg>
-        <clipPath id="splash-l" clipPathUnits="userSpaceOnUse"><path d="M8 15 90 685Q91 692 95.5 696Q100 700 106 700H260Q266 700 269.5 696Q273 692 272 685L209 166Q207 161 213 161H403Q410 161 413.5 157Q417 153 416 146L400 15Q397 0 383 0H20Q14 0 10.5 4Q7 8 8 15Z" /></clipPath>
+        <mask id="splash-l" maskUnits="userSpaceOnUse" x="-5000" y="-5000" width="10000" height="10000"><path fill="#fff" stroke="#fff" stroke-linejoin="round" stroke-width="0" d="M8 15 90 685Q91 692 95.5 696Q100 700 106 700H260Q266 700 269.5 696Q273 692 272 685L209 166Q207 161 213 161H403Q410 161 413.5 157Q417 153 416 146L400 15Q397 0 383 0H20Q14 0 10.5 4Q7 8 8 15Z" /></mask>
         <g class="mark">
           <path class="route stem" /><path class="route foot" />
-          <ellipse class="cap c1" /><ellipse class="cap c2" /><circle class="cap c3" r="0" />
           <circle class="start" r="0" /><circle class="finish" r="0" />
         </g>
       </svg>
@@ -65,7 +64,7 @@
       (function () {
         var splash = document.getElementById('splash');
         var $ = function (q) { return splash.querySelector(q); };
-        var mark = $('.mark'), stem = $('.stem'), foot = $('.foot'), capTop = $('.c1'), capEnd = $('.c2'), capKnee = $('.c3');
+        var mark = $('.mark'), stem = $('.stem'), foot = $('.foot');
         var dotA = $('.start'), dotB = $('.finish'), clip = $('#splash-l path');
         var wm = $('.wm'), slotL = $('.wm .l'), rest = $('.wm .rest'), cover = $('.wm .cover');
         // the app builds its map once the letter shape is done (that work would make this stutter)
@@ -93,14 +92,14 @@
         var mix = function (p, q, t) { return [lerp(p[0], q[0], t), lerp(p[1], q[1], t)]; };
 
         // The app icon (public/favicon.svg), icon units: route as 3 curves, start dot, finish ring.
-        var R = [[150, 112], [124, 220], [116, 320], [166, 366], [216, 408], [300, 392], [344, 368], [368, 354], [380, 340], [388, 322]];
-        var ICON_C = [269, 243], ICON_H = 340, ICON_W = 44, DOT = 40, RING = 22;
+        var R = [[156, 120], [146, 186.67], [136, 253.33], [126, 320], [118, 390], [230, 412], [324, 376], [348, 362], [360, 348], [368, 330]];
+        var ICON_C = [256, 256], ICON_H = 353, ICON_W = 56, DOT = 40, RING = 22;
         // The L of Barlow Condensed Black Italic (font units, y up): stem 181 thick leaning 7°,
         // foot 161 thick. Stem top, bottom corner, foot end. The ends reach a little past the
         // letter; a mask with the exact letter shape trims them, so it ends as the real letter.
         var TOP = [183.1, 700], KNEE = [107.3, 80.5], TIP = [408, 80.5];
         var STEM_TO = [[184.6, 712], [96.3, -12]], FOOT_TO = [[40, 80.5], [372, 80.5], [430, 80.5]];
-        var STEM_W = 186, FOOT_W = 167, L_C = [212, 350], FONT = 64;
+        var STEM_W = 186, FOOT_W = 167, FONT = 64;
 
         var g; // geometry on screen
         var iconScale = Math.min(136, innerHeight * 0.2) / ICON_H; // the icon about 100 px tall
@@ -153,12 +152,6 @@
           return d;
         }
         var circle = function (el, c, r) { el.setAttribute('cx', c[0]); el.setAttribute('cy', c[1]); el.setAttribute('r', Math.max(0, r)); };
-        // a round line end that flattens into a square one: half an ellipse pressed flat along the line
-        function roundEnd(el, end, prev, w, flat) {
-          var a = Math.atan2(end[1] - prev[1], end[0] - prev[0]) * 180 / Math.PI;
-          el.setAttribute('rx', Math.max(0, (w / 2) * (1 - flat))); el.setAttribute('ry', w / 2);
-          el.setAttribute('transform', 'translate(' + end[0] + ' ' + end[1] + ') rotate(' + a + ')');
-        }
 
         // timeline (ms): draw the route, move into place, become the letter, the word follows
         var T = { draw: 120, drawLen: 640, ring: 680, move: 880, moveLen: 500, shape: 1180, shapeLen: 400, letters: 1420, lettersLen: 480 };
@@ -191,9 +184,14 @@
             var P = g.icon.map(function (p) { return apply(A, p); });
             var stemP = P.slice(0, 4).map(function (p, i) { return mix(p, g.stemTo[i], m2); });
             var footP = P.slice(3).map(function (p, i) { return mix(p, g.footTo[i], m2); });
+            // the bend stays one round bend (stem and foot meet in the corner) until late;
+            // then the corner sharpens, inside the shrinking mask
+            var sharp = inOut(clamp((m2 - 0.6) / 0.4)), K = mix(P[3], g.knee, m2);
+            stemP[3] = mix(K, stemP[3], sharp); footP[0] = mix(K, footP[0], sharp);
             // it gains the letter's weight gradually while moving and bending
             var w0 = ICON_W * g.iconScale * s, q = 0.65 * m1 + 0.35 * m2;
             var ws = lerp(w0, STEM_W * g.k, q), wf = lerp(w0, FOOT_W * g.k, q);
+            wf = lerp(ws, wf, sharp); // one thickness while it's one bend
             stem.setAttribute('d', curve(stemP)); foot.setAttribute('d', curve(footP));
             stem.setAttribute('stroke-width', ws); foot.setAttribute('stroke-width', wf);
             if (pDraw < 1) {
@@ -203,15 +201,9 @@
               stem.style.strokeDasharray = lens[0]; stem.style.strokeDashoffset = lens[0] - Math.min(done, lens[0]);
               foot.style.strokeDasharray = lens[1]; foot.style.strokeDashoffset = lens[1] - Math.max(0, done - lens[0]);
               stem.style.visibility = done > 0 ? 'visible' : 'hidden'; foot.style.visibility = done > lens[0] ? 'visible' : 'hidden';
-              stem.style.strokeLinecap = foot.style.strokeLinecap = 'round';
             } else {
-              // drawn: square ends plus round caps as circles, which shrink away while it becomes the letter
               stem.style.strokeDasharray = foot.style.strokeDasharray = 'none';
               stem.style.visibility = foot.style.visibility = 'visible';
-              stem.style.strokeLinecap = foot.style.strokeLinecap = 'butt';
-              roundEnd(capTop, stemP[0], stemP[1], ws, m2);
-              roundEnd(capEnd, footP[6], footP[5], wf, m2);
-              circle(capKnee, mix(P[3], g.knee, m2), Math.min(ws, wf) / 2); // round bend; the mask squares it off
             }
             // the dots ride along and are taken in while it moves
             var gone = 1 - out(clamp((m1 - 0.35) / 0.65));
@@ -219,11 +211,13 @@
             var ring = (0.5 + 0.5 * pRing) * gone * (pRing > 0 ? 1 : 0);
             circle(dotB, P[9], (DOT - RING / 2) * g.iconScale * s * ring);
             dotB.setAttribute('stroke-width', RING * g.iconScale * s * ring);
-            // the exact letter shape trims the ends, only once it's in place
-            if (m2 >= 0.75) {
-              var c = 1 + 0.12 * (1 - clamp((m2 - 0.75) / 0.25));
-              clip.setAttribute('transform', g.clipT + ' translate(' + L_C[0] + ' ' + L_C[1] + ') scale(' + c + ') translate(' + -L_C[0] + ' ' + -L_C[1] + ')');
-              mark.setAttribute('clip-path', 'url(#splash-l)');
+            // The letter shape with a margin around it, the margin shrinking to nothing: it shaves
+            // the round ends flat bit by bit and leaves exactly the letter.
+            if (m2 >= 0.5) {
+              var margin = 120 * (1 - out((m2 - 0.5) / 0.5)); // font units
+              clip.setAttribute('transform', g.clipT);
+              clip.setAttribute('stroke-width', 2 * margin);
+              mark.setAttribute('mask', 'url(#splash-l)');
             }
             // the other letters follow
             if (!lettersOn && t >= T.letters) {

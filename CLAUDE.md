@@ -39,8 +39,9 @@ exports it to a Garmin watch.
 - No accounts: favourites, recent places, saved routes and settings live in
   localStorage (`src/lib/storage.ts`). Re-adding the home-screen app can lose them.
 - Accent colour volt `#D7FF3A` on near-black `#111113`; fonts Barlow / Barlow Condensed.
-- App icon: route curving into an "L", end curling slightly up (`public/favicon.svg`,
-  PNGs generated from it).
+- App icon: route forming an "L" whose straight stem leans 7° like the italic L of the logo,
+  round bend, end curling slightly up, start dot + finish ring (`public/favicon.svg`; PNGs
+  rendered from it full-bleed, no rounded corners).
 - Status bar: no `black-translucent` meta (iOS 26 gradient + short-viewport bug). The
   top fade is our own gradient (`.app::before`).
 
@@ -116,9 +117,10 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
 - Planning screen: animated route drawing + step text.
 - Start screen: inline in `index.html` (shows before any JS). The icon's route draws itself,
   moves as a whole onto the L slot (affine map: start→stem top, bend→corner, finish→foot end,
-  gaining the letter's weight), then bends into the L (round ends flatten as half-ellipses; a
-  mask with the real glyph outline trims the last bits) → pixel-identical to the text L, then
-  swapped. Letters are revealed by a sliding cover (transform), bg fades via opacity, word
+  gaining the letter's weight), then bends into the L. Ends stay round; stem and foot stay one
+  round bend until 60 %, then the corner sharpens. A mask = the real glyph outline plus a
+  margin (stroke) that shrinks to 0 shaves the round ends flat → pixel-identical to the text L,
+  then swapped. The SVG drawing sits above the letters' cover (z-index). Letters are revealed by a sliding cover (transform), bg fades via opacity, word
   flies into the logo (transform): all compositor-safe. The **map is only built after the
   shape is done** (`window.__longcutSplash.shapeDone`, App `mapOn`), because MapLibre's main-
   thread work made the morph stutter; its style is preloaded. Font: animation holds before the
