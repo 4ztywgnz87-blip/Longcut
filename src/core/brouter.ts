@@ -52,6 +52,8 @@ export class BRouterRouter implements Router {
   /** Answers from this session: "New routes" and similar plans reuse them. */
   private memory = new Map<string, BRouterResponse>();
   private calmTimer: ReturnType<typeof setTimeout> | undefined;
+  /** After a "retry later", every request waits until this time (ms), not just the refused one. */
+  private pauseUntil = 0;
   /** Number of route requests actually sent (cache hits excluded). */
   requestCount = 0;
 
@@ -110,6 +112,9 @@ export class BRouterRouter implements Router {
   private async get(url: string, ro: RouteOptions, signal?: AbortSignal): Promise<BRouterResponse> {
     for (let attempt = 0; ; attempt++) {
       const res = await this.gate.run(async () => {
+        const paused = this.pauseUntil - Date.now();
+        if (paused > 0) await sleep(paused);
+        signal?.throwIfAborted();
         const wait = this.lastStart + (this.opts.minIntervalMs ?? 150) - Date.now();
         this.lastStart = Math.max(Date.now(), this.lastStart + (this.opts.minIntervalMs ?? 150));
         if (wait > 0) await sleep(wait);
@@ -131,12 +136,19 @@ export class BRouterRouter implements Router {
       // minute and retry after a short pause, instead of long waits.
       if (res.status === 403 && /retry later/i.test(text)) {
         this.calmDown();
+        this.pauseUntil = Math.max(this.pauseUntil, Date.now() + 1500 * (attempt + 1));
         if (attempt < 3) {
           await sleep(1500 * (attempt + 1));
           signal?.throwIfAborted();
           continue;
         }
         throw new RouterError('The route server is busy.', false, true);
+      }
+      // The server had too much to do and stopped our request: try the same one again.
+      if (/operation killed/i.test(text) && attempt < 2) {
+        await sleep(800 * (attempt + 1));
+        signal?.throwIfAborted();
+        continue;
       }
       if (res.status >= 500 && attempt < 3) {
         await sleep(1500 * (attempt + 1));

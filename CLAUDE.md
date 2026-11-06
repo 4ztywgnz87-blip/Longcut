@@ -54,8 +54,14 @@ exports it to a Garmin watch.
    accepted −min(1.5 km, 5%) … +max(500 m, min(1 km, 5%))). Dauwe wants never shorter, a little
    longer is fine (walking out), 1 km longer is too much.
 3. Stuck or "jumpy" lengths (via flips across a railway/motorway) → shift the via
-   angles (`variant`). Extra **rounds** of fresh variants until 3 good, different
-   routes (similarity ≤ 70%). **Time budget 30 s**; returns the best found so far.
+   angles (`variant`). Max 5 tries per template; aim = target + 350 m (`extraOk*0.7`); a
+   template's best try counts short as twice as bad. The first template calibrates the
+   size→length ratio, the others wait for it (≤2.5 s). Templates stop as soon as 3 good
+   non-short routes exist. Extra **rounds** of fresh variants until 3 different routes
+   (similarity ≤ 70%) with **at most 1 short** (2 only if nothing better). **Request budget
+   30 per plan** (+15 once if fewer than 3 routes): brouter.de answers "Please, retry later!"
+   (403, from its front end, not BRouter itself) after ~35 quick requests from one IP.
+   **Time budget 30 s**; returns the best found so far. Don't probe that limit on purpose.
 4. Out-and-back spurs are removed (`removeSpurs`). Score (lower = better): km too long
    (beyond +500 m) ×0.5, km short ×0.25 (+ its run-twice share), run-twice ×4, busy roads ×3,
    noisy (next to motorways) ×1.5, unpaved ×0.5 (only when "Mostly paved").
@@ -66,8 +72,9 @@ exports it to a Garmin watch.
    "Earlier / Set n of m / Later". `PlanRequest.signal` lets the Cancel button stop a search.
 
 BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, in-session
-response cache, on 403 "retry later" → short retries (1.5–4.5 s) and 2 parallel for a
-minute; throws `RouterError(busy)` → app shows a neutral "taking longer than usual".
+response cache, on 403 "retry later" → **all** requests pause (`pauseUntil`), short retries
+(1.5–4.5 s) and 2 parallel for a minute; throws `RouterError(busy)` → app shows a neutral
+"taking longer than usual". "operation killed" (server overloaded) → same request retried.
 
 Surfaces (profile + `isUnpaved` in brouter.ts): paved (asphalt, concrete, sett…), **half-paved
 counts as good** (compacted, fine_gravel, gravel = steenslag/dolomiet; Dauwe agreed), unpaved =

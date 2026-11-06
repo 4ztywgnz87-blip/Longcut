@@ -22,10 +22,19 @@ export const lengthRules = (target: number) => {
     extraOk,
     maxOver: Math.max(extraOk, Math.min(1000, target * 0.05)), // longest accepted
     maxShort: Math.min(1500, target * 0.05), // shortest accepted (then padded)
-    aim: target + extraOk / 2,
+    // aim a bit past the middle: a few hundred meters extra is fine, short needs patching
+    aim: target + extraOk * 0.7,
   };
 };
-const MAX_STEPS = 7;
+const MAX_STEPS = 5;
+/**
+ * Route requests one plan may use. The public route server refuses ("retry later") after
+ * about 35 quick requests from one phone, so staying under that keeps planning fast,
+ * also for "New routes" right after. When it's used up, the best routes so far are shown.
+ */
+const REQUEST_BUDGET = 30;
+/** Extra requests, once, when the budget gave fewer than 3 routes (hard places: rivers, motorways). */
+const EXTRA_BUDGET = 15;
 /** After this long, stop refining and show the best routes found so far. */
 const TIME_BUDGET_MS = 30_000;
 /** Rounds of fresh variants to try when the first round gives fewer than 3 good routes. */
@@ -144,6 +153,17 @@ function scoreRoute(segments: Segment[], target: number, req: PlanRequest) {
   return { stats, dev, score };
 }
 
+/** A signal that fires when either one fires. */
+function anySignal(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
+  if (!a) return b;
+  const ctl = new AbortController();
+  const fire = () => ctl.abort();
+  if (a.aborted || b.aborted) ctl.abort();
+  a.addEventListener('abort', fire, { once: true });
+  b.addEventListener('abort', fire, { once: true });
+  return ctl.signal;
+}
+
 /** Resolves with the result, or with null once the deadline has passed. */
 function beforeDeadline<T>(p: Promise<T>, deadline: number): Promise<T | null> {
   const left = deadline - Date.now();
@@ -173,24 +193,82 @@ async function fitTemplate(
   initialSize: number,
   deadline: number,
   onBusy: () => void,
+  stop: AbortSignal,
+  calib: Calibration,
+  lead: boolean,
+  budget: Budget,
+): Promise<Attempt | null> {
+  // The first template measures how long a route gets for a given shape size; the others
+  // wait for that and start from a better first guess (fewer tries, fewer requests).
+  if (!lead) await calib.ready;
+  try {
+    return await fitTemplateInner(t, req, router, ro, target, calib.ratio ? rulesAim(target) / calib.ratio : initialSize, deadline, onBusy, stop, calib, budget);
+  } finally {
+    if (lead) calib.release();
+  }
+}
+
+const rulesAim = (target: number) => lengthRules(target).aim;
+
+interface Budget {
+  left: number;
+}
+
+interface Calibration {
+  /** Route length per meter of shape size, measured by the first try. */
+  ratio: number | null;
+  ready: Promise<void>;
+  release: () => void;
+}
+
+function newCalibration(): Calibration {
+  let release = () => {};
+  const ready = new Promise<void>((r) => (release = r));
+  // don't let the others wait long if the first try is slow
+  setTimeout(() => release(), 2500);
+  return { ratio: null, ready, release: () => release() };
+}
+
+async function fitTemplateInner(
+  t: Template,
+  req: PlanRequest,
+  router: Router,
+  ro: RouteOptions,
+  target: number,
+  initialSize: number,
+  deadline: number,
+  onBusy: () => void,
+  stop: AbortSignal,
+  calib: Calibration,
+  budget: Budget,
 ): Promise<Attempt | null> {
   const rules = lengthRules(target);
   const aim = rules.aim;
+  // How far from good a length is. Short counts double: it needs an extra out-and-back.
+  const miss = (len: number) => {
+    const d = len - target;
+    if (d >= 0 && d <= rules.extraOk) return 0;
+    return d < 0 ? -d * 2 : d - rules.extraOk;
+  };
+  const signal = anySignal(req.signal, stop);
   let size = Math.max(initialSize, t.minSize);
   let variant = 0;
   let below: Attempt | null = null;
   let above: Attempt | null = null;
   let best: Attempt | null = null;
   let previous: number | null = null;
-  const closeness = (len: number) => Math.abs(deviation(len, aim));
 
-  for (let step = 0; step < MAX_STEPS && Date.now() < deadline; step++) {
+  for (let step = 0; step < MAX_STEPS && Date.now() < deadline && !stop.aborted; step++) {
+    if (budget.left <= 0) break;
+    budget.left--;
     let segments: Segment[];
     try {
-      const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro, req.signal), deadline);
+      const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro, signal), deadline);
       if (!raw) break; // out of time: keep the best try so far
       segments = removeSpurs(raw.segments);
     } catch (e) {
+      // enough good routes were found elsewhere: stop here
+      if (stop.aborted && !req.signal?.aborted) break;
       if (e instanceof RouterError && e.noRoute) {
         // a via point landed somewhere unroutable (water, closed area): shift the points
         variant++;
@@ -205,8 +283,12 @@ async function fitTemplate(
     }
     const length = totalLength(segments);
     const attempt = { size, segments, length };
+    if (calib.ratio === null && length > 0) {
+      calib.ratio = length / size;
+      calib.release();
+    }
     if (debug()) console.log(`  [${t.label}] step ${step} v${variant} size ${(size / 1000).toFixed(2)}km → ${(length / 1000).toFixed(2)}km`);
-    if (!best || closeness(length) < closeness(best.length)) best = attempt;
+    if (!best || miss(length) < miss(best.length)) best = attempt;
 
     if (length >= target && length <= target + rules.extraOk) break;
 
@@ -239,6 +321,8 @@ async function fitTemplate(
       // roads are not straight: scale size by how far off we are
       next = size * (aim / length);
     }
+    // the same shape again would give the same route: move the via points instead
+    if (Math.abs(next - size) / size < 0.005) variant++;
     size = Math.max(t.minSize, next);
   }
   return best;
@@ -284,27 +368,59 @@ export async function planRoutes(
   const found: Candidate[] = [];
   let chosen: Candidate[] = [];
   const base = (req.variation ?? 0) * MAX_ROUNDS;
+  const isShort = (c: Candidate) => c.route.stats.length < target;
+  const calib = newCalibration();
+  const budget: Budget = { left: REQUEST_BUDGET - 1 }; // the direct route used one
 
-  // 3. Rounds: if fewer than 3 good, different routes came out, try fresh variants.
-  for (let round = 0; round < MAX_ROUNDS && chosen.length < 3 && Date.now() < deadline && !busy; round++) {
-    const roundReq = { ...req, variation: base + round };
-    const results = await Promise.all(
-      templates(roundReq, isLoop).map(async (t) => {
-        const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true));
-        return a ? toCandidate(a.segments, target, req, t.label) : null;
-      }),
-    );
-    found.push(...results.filter((c): c is Candidate => c !== null));
-
-    // Keep routes inside the allowed window, best first, and skip near-duplicates.
+  /**
+   * The best 3 different routes. At most `shorts` of them may be short (those get an
+   * out-and-back at the finish): preferably 1, 2 only when nothing better came out.
+   */
+  const pick = (shorts: number) => {
     const ranked = found
       .filter((c) => c.route.stats.length >= target - maxShort && c.route.stats.length <= target + maxOver)
       .sort((x, y) => x.route.score - y.route.score);
-    chosen = [];
+    const out: Candidate[] = [];
+    let n = 0;
     for (const c of ranked) {
-      if (chosen.every((o) => similarity(c, o) <= MAX_SIMILARITY)) chosen.push(c);
-      if (chosen.length === 3) break;
+      if (isShort(c) && n >= shorts) continue;
+      if (!out.every((o) => similarity(c, o) <= MAX_SIMILARITY)) continue;
+      out.push(c);
+      if (isShort(c)) n++;
+      if (out.length === 3) break;
     }
+    return out;
+  };
+  const best = () => {
+    const one = pick(1);
+    return one.length === 3 ? one : pick(2);
+  };
+
+  // 3. Rounds: if fewer than 3 good, different routes came out, try fresh variants.
+  // Within the normal budget, keep going until at most one route is short; the extra
+  // budget is only for getting 3 routes at all.
+  let extra = true;
+  for (let round = 0; round < MAX_ROUNDS + 1 && Date.now() < deadline && !busy; round++) {
+    if (round > 0 && pick(1).length === 3) break;
+    if (budget.left <= 0) {
+      if (!extra || chosen.length === 3) break;
+      extra = false;
+      budget.left = EXTRA_BUDGET;
+    }
+    const roundReq = { ...req, variation: base + round };
+    // As soon as 3 good routes are in (at most one short), stop the other searches:
+    // fewer requests, so faster and kinder to the route server.
+    const stop = new AbortController();
+    await Promise.all(
+      templates(roundReq, isLoop).map(async (t, i) => {
+        const a = await fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true), stop.signal, calib, i === 0, budget);
+        if (!a) return;
+        found.push(toCandidate(a.segments, target, req, t.label));
+        const now = pick(1);
+        if (now.length === 3 && now.filter(isShort).length === 0) stop.abort();
+      }),
+    );
+    chosen = best();
   }
   if (!chosen.length) {
     if (busy) return { ok: false, reason: 'busy' };
