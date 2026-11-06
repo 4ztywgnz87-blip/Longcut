@@ -143,8 +143,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 }
 
 /* Panel body and grab handle (swipe down to hide the panel) */
-/* springs back with a slight bounce */
-.sheet { transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1); }
+
 .sheet-body { display: grid; gap: inherit; }
 .sheet-handle {
   display: flex; justify-content: center; align-items: center;
@@ -159,15 +158,23 @@ button:disabled { opacity: 0.35; cursor: default; }
 /* while you hold the panel, the bar stretches and lights up a little */
 .sheet.dragging .sheet-handle span { width: 56px; opacity: 1; background: var(--fg); }
 .sheet-handle:active { cursor: grabbing; }
-.sheet.collapsed { gap: 8px; touch-action: none; }
-@media (max-width: 899px) {
-  /* a little more room under a hidden panel, away from the iPhone's home bar */
-  .sheet.collapsed { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + 120px); }
-}
+.sheet.collapsed { touch-action: none; }
+/* --sheet-progress (0 open … 1 collapsed) is set while the panel slides */
+/* the fields fade out in the first part of the slide, the summary fades in at the end */
+.sheet-body { opacity: clamp(0, calc(1 - var(--sheet-progress, 0) * 2.2), 1); transition: opacity 0.2s ease; }
+.sheet-summary { opacity: clamp(0, calc((var(--sheet-progress, 0) - 0.55) * 2.2), 1); }
+.sheet.dragging .sheet-body, .sheet.dragging .sheet-summary { transition: none; }
+/* one-line summary that sits on top of the panel and fades in as it slides down */
 .sheet-summary {
+  position: absolute; top: 26px; z-index: 1;
+  left: var(--gutter-l); right: var(--gutter-r);
   display: flex; align-items: center; gap: 10px;
   min-height: 44px; padding: 0 4px;
   border: 0; background: none; text-align: left;
+  transition: opacity 0.2s ease;
+}
+@media (min-width: 900px) {
+  .sheet-handle, .sheet-summary { display: none; }
 }
 .summary-text { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .summary-km { font-family: var(--display); font-weight: 800; font-size: 22px; color: var(--accent-text); font-variant-numeric: tabular-nums; flex: none; }
@@ -380,7 +387,7 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: var(--bg); color: var(--fg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 }
-.locate-btn { transition: transform 0.35s cubic-bezier(0.3, 1.4, 0.5, 1); }
+
 .locate-btn:active { color: #4c8dff; }
 
 /* Pick on map */

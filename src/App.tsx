@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type * as maplibregl from 'maplibre-gl';
 import MapView from './components/MapView';
 import type { MapRoute } from './components/MapView';
@@ -6,7 +6,8 @@ import PlaceSearch from './components/PlaceSearch';
 import ElevationSpark from './components/ElevationSpark';
 import Segmented from './components/Segmented';
 import PlanningAnimation from './components/PlanningAnimation';
-import SheetHandle, { useSheetDrag } from './components/SheetHandle';
+import SheetHandle from './components/SheetHandle';
+import { useBottomSheet } from './components/useBottomSheet';
 import { Icon } from './components/Icon';
 import type { Place } from './lib/geocode';
 import { reverseGeocode } from './lib/geocode';
@@ -53,14 +54,6 @@ export default function App() {
   const [unpavedOk, setUnpavedOk] = useState(initial.unpavedOk);
   const [preferLit, setPreferLit] = useState(initial.preferLit);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  // panels can be swiped down to see more of the map
-  const [collapsed, setCollapsed] = useState(false);
-  const [dragY, setDragY] = useState<number | null>(null);
-  // when the panel is hidden, all of it can be dragged up (a bigger target than the bar)
-  const panelDrag = useSheetDrag(collapsed, setCollapsed, (dy) => setDragY(dy));
-  const collapsedDrag = collapsed ? panelDrag : {};
-  const sheetDrag: React.CSSProperties | undefined =
-    dragY == null ? undefined : { transform: `translateY(${dragY}px)`, transition: 'none' };
   const [routes, setRoutes] = useState<PlannedRoute[]>([]);
   const [active, setActive] = useState(0);
   const [variation, setVariation] = useState(0);
@@ -75,8 +68,16 @@ export default function App() {
   const [savedIds, setSavedIds] = useState<Record<number, string>>({});
   const mapRef = useRef<maplibregl.Map | null>(null);
   const sheet = useRef<HTMLDivElement>(null);
-  const [sheetSize, setSheetSize] = useState({ w: 0, h: 0 });
   const [wide, setWide] = useState(() => matchMedia('(min-width: 900px)').matches);
+  // The panel slides between open and collapsed with your finger (phones only).
+  const locateBtn = useRef<HTMLButtonElement>(null);
+  const bs = useBottomSheet(sheet, locateBtn, !wide, view.k);
+  const collapsed = bs.collapsed;
+  const sheetSize = { w: bs.width, h: bs.coveredHeight };
+  const sheetStyle: React.CSSProperties = {};
+  const sheetClass = collapsed ? 'collapsed' : '';
+  const collapsedDrag = collapsed ? bs.handlers : {};
+  const handle = <SheetHandle collapsed={collapsed} onToggle={() => bs.setCollapsed(!collapsed)} handlers={bs.handlers} />;
 
   // --- settings & layout ---------------------------------------------------
   useEffect(() => {
@@ -90,28 +91,7 @@ export default function App() {
     return () => mq.removeEventListener('change', on);
   }, []);
 
-  useLayoutEffect(() => {
-    const el = sheet.current;
-    if (!el) return;
-    // h = how much of the screen the panel covers, measured from its top edge to the
-    // bottom of the app, so padding for the phone's home bar is included
-    // offsetTop ignores the drag/spring transform, so this is where the panel settles
-    const measure = () => {
-      const appHeight = el.parentElement?.clientHeight ?? innerHeight;
-      setSheetSize({ w: el.offsetWidth, h: Math.max(0, appHeight - el.offsetTop) });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el, { box: 'border-box' });
-    addEventListener('resize', measure);
-    return () => {
-      ro.disconnect();
-      removeEventListener('resize', measure);
-    };
-  }, [view.k]);
 
-  // a new screen always opens with its panel shown
-  useEffect(() => setCollapsed(false), [view.k]);
 
   // close the Garmin and Maps panels when switching screens or routes
   useEffect(() => {
@@ -357,7 +337,8 @@ export default function App() {
           type="button"
           className="locate-btn"
           aria-label="Show my location"
-          style={wide ? undefined : { bottom: sheetSize.h + 12, ...sheetDrag }}
+          ref={locateBtn}
+          style={wide ? undefined : { bottom: sheetSize.h + 12 }}
           onClick={goToMe}
         >
           <Icon name="my-location" />
@@ -415,8 +396,8 @@ export default function App() {
 
       {view.k === 'edit' && (
         <form
-          className={`sheet edit-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`}
-          style={sheetDrag}
+          className={`sheet edit-sheet ${sheetClass}`}
+          style={sheetStyle}
           {...collapsedDrag}
           ref={sheet as React.RefObject<HTMLFormElement & HTMLDivElement>}
           onSubmit={(e) => {
@@ -424,17 +405,24 @@ export default function App() {
             run(0);
           }}
         >
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
-          {collapsed && (
-            <button type="button" className="sheet-summary" onClick={() => setCollapsed(false)}>
-              <span className="dot dot-start" aria-hidden="true" />
-              <span className="summary-text">
-                {from?.name ?? 'Choose start'} → {loop ? 'loop' : to?.name ?? 'choose finish'}
-              </span>
-              <span className="summary-km">{km} km</span>
-            </button>
-          )}
-          <div className="sheet-body" hidden={collapsed}>
+          {handle}
+          {/* one-line summary that fades in as the panel slides down */}
+          <button
+            type="button"
+            className="sheet-summary"
+            data-peek
+            style={{ pointerEvents: collapsed ? 'auto' : 'none' }}
+            aria-hidden={!collapsed}
+            tabIndex={collapsed ? 0 : -1}
+            onClick={() => bs.setCollapsed(false)}
+          >
+            <span className="dot dot-start" aria-hidden="true" />
+            <span className="summary-text">
+              {from?.name ?? 'Choose start'} → {loop ? 'loop' : to?.name ?? 'choose finish'}
+            </span>
+            <span className="summary-km">{km} km</span>
+          </button>
+          <div className="sheet-body" inert={collapsed}>
           <div className="fields">
             <div className="field-stack">
               <button type="button" className="field" onClick={() => setView({ k: 'search', field: 'from' })}>
@@ -602,9 +590,9 @@ export default function App() {
       )}
 
       {view.k === 'results' && r && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
-          <div className="sheet-head">
+        <div className={`sheet results-sheet ${sheetClass}`} style={sheetStyle} ref={sheet} {...collapsedDrag}>
+          {handle}
+          <div className="sheet-head" data-peek>
             <button type="button" className="link-btn" onClick={() => setView({ k: 'edit' })}>
               <Icon name="back" size={18} /> Edit
             </button>
@@ -624,7 +612,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="sheet-body" hidden={collapsed}>
+          <div className="sheet-body results-body" inert={collapsed}>
           <div className="headline">
             <div className="big-km">
               <b>{fmtKm(r.stats.length)}</b>
@@ -712,15 +700,15 @@ export default function App() {
       )}
 
       {view.k === 'savedRoute' && (
-        <div className={`sheet results-sheet ${collapsed ? 'collapsed' : ''} ${dragY != null ? 'dragging' : ''}`} style={sheetDrag} ref={sheet} {...collapsedDrag}>
-          <SheetHandle collapsed={collapsed} onChange={setCollapsed} onDrag={setDragY} />
-          <div className="sheet-head">
+        <div className={`sheet results-sheet ${sheetClass}`} style={sheetStyle} ref={sheet} {...collapsedDrag}>
+          {handle}
+          <div className="sheet-head" data-peek>
             <button type="button" className="link-btn" onClick={() => setView({ k: 'saved' })}>
               <Icon name="back" size={18} /> Saved
             </button>
             {collapsed && <span className="summary-km">{fmtKm(view.route.lengthM)} km</span>}
           </div>
-          <div className="sheet-body" hidden={collapsed}>
+          <div className="sheet-body results-body" inert={collapsed}>
           <div className="headline">
             <div className="big-km">
               <b>{fmtKm(view.route.lengthM)}</b>
