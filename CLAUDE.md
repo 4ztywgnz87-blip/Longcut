@@ -56,8 +56,8 @@ exports it to a Garmin watch.
 3. Stuck or "jumpy" lengths (via flips across a railway/motorway) → shift the via
    angles (`variant`). Max 7 tries per template; aim = target + 350 m (`extraOk*0.7`); a
    template's best try counts short as twice as bad. The first template calibrates the
-   size→length ratio, the others wait for it (≤2.5 s). Templates stop as soon as 3 good
-   non-short routes exist. Extra **rounds** of fresh variants until 3 different routes
+   size→length ratio, the others wait for it (≤2.5 s). Templates stop early only when 3
+   non-short routes all score ≤ 0.15 (`GOOD_SCORE`); stopping on length alone lost good routes. Extra **rounds** of fresh variants until 3 different routes
    (similarity ≤ 70%) with **at most 1 short** (2 only if nothing better). **Request budget
    40 per plan** (+20 once if fewer than 3 routes; a busy server doesn't end the search): brouter.de answers "Please, retry later!"
    (403, from its front end, not BRouter itself) after ~35 quick requests from one IP.
