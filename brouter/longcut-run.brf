@@ -21,7 +21,13 @@ assign uphillcutoff 1.5
 ---context:way
 
 assign ispaved or surface=paved or surface=asphalt or surface=concrete or surface=paving_stones surface=sett
-assign isunpaved and not ispaved and not surface= not surface=compacted|fine_gravel
+# Half-paved (gravel, dolomite, crushed stone) runs fine: it counts as good.
+assign ishalfpaved surface=compacted|fine_gravel|gravel|pebblestone|grass_paver
+# Soft: dirt, grass, sand, mud, forest paths (known surface, or a rough track type).
+assign issoft or ( and not ispaved and not ishalfpaved not surface= )
+                 ( and surface= and highway=track tracktype=grade3|grade4|grade5 )
+# No surface known: paths and field tracks without a track type (often fine, sometimes not).
+assign isunknownsurface and surface= or highway=path|bridleway and highway=track not tracktype=grade1|grade2|grade3|grade4|grade5
 assign issidewalk sidewalk=left|right|both|yes|separate
 assign isroute or route_hiking_iwn=yes or route_hiking_nwn=yes or route_hiking_rwn=yes or route_hiking_lwn=yes
               or route_foot_nwn=yes or route_foot_rwn=yes route_foot_lwn=yes
@@ -63,9 +69,9 @@ assign noisecost
 
 assign unpavedcost
   if not avoid_unpaved then 0
-  else if not isunpaved then 0
-  else if surface=mud|sand|grass then 0.6
-  else 0.25
+  else if issoft then ( if surface=mud|sand|grass then 0.6 else 0.35 )
+  else if isunknownsurface then 0.15
+  else 0
 
 assign greenbonus
   if not prefer_green then 0

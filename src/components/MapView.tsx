@@ -93,7 +93,8 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
   // centred). With a single point the map stays put, so hiding the panel doesn't jump.
   const twoPoints = !!start && !!end && (start[0] !== end[0] || start[1] !== end[1]);
   const padKey = routes.length || twoPoints ? `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}` : '';
-  const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${end}|${padKey}`;
+  // a finish on the start (Loop) is the same view as the start alone: no refit
+  const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${twoPoints || routes.length ? end : ''}|${padKey}`;
   const lastFit = useRef('');
   useEffect(() => {
     const map = mapRef.current;
@@ -165,8 +166,6 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
   (map.getSource('pts') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: pts });
 
   if (!fit) return;
-  // MapLibre adds padding from earlier camera moves to new ones, so start from zero.
-  map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
   // Keep the padding smaller than the map itself, or MapLibre refuses to fit.
   const c = map.getContainer();
   const scaleY = Math.min(1, (c.clientHeight - 120) / Math.max(1, s.padding.top + s.padding.bottom));
@@ -185,6 +184,11 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
   }
   const b = new maplibregl.LngLatBounds(all[0], all[0]);
   all.forEach((c) => b.extend(c));
+  // MapLibre adds the map's current padding to the one asked for when fitting, so clear
+  // it first, keeping the same spot in the middle of the screen (else the map jumps).
+  const c0 = map.getContainer();
+  const middle = map.unproject([c0.clientWidth / 2, c0.clientHeight / 2]);
+  map.jumpTo({ center: middle, padding: { top: 0, bottom: 0, left: 0, right: 0 } });
   map.fitBounds(b, { padding, duration: 700, maxZoom: 15 });
 }
 

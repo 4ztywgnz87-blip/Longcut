@@ -54,7 +54,7 @@ interface Detail {
 type StatKey = 'busy' | 'unpaved' | 'twice' | 'climb';
 const STAT_INFO: Record<StatKey, string> = {
   busy: 'Busy: share of the route on main roads (smaller through roads count half). Red on the map.',
-  unpaved: 'Unpaved: share on gravel, dirt, grass or paths with no known surface. Dashed on the map.',
+  unpaved: 'Unpaved: share on dirt, grass, sand or forest paths, or paths with no known surface. Gravel and dolomite count as paved. Dashed on the map.',
   twice: 'Twice: share of the route you run more than once, like out and back on the same road.',
   climb: 'Climb: total meters uphill.',
 };
@@ -192,7 +192,6 @@ export default function App() {
   const centerOn = (c: LngLat) => {
     const map = mapRef.current;
     if (!map) return;
-    map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
     map.easeTo({ center: c, zoom: Math.max(map.getZoom(), 15), padding: pad, duration: 700 });
   };
 

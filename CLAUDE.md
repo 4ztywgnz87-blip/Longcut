@@ -69,6 +69,14 @@ BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, in-sessi
 response cache, on 403 "retry later" → short retries (1.5–4.5 s) and 2 parallel for a
 minute; throws `RouterError(busy)` → app shows a neutral "taking longer than usual".
 
+Surfaces (profile + `isUnpaved` in brouter.ts): paved (asphalt, concrete, sett…), **half-paved
+counts as good** (compacted, fine_gravel, gravel = steenslag/dolomiet; Dauwe agreed), unpaved =
+soft (dirt, grass, sand, mud, rough tracks) or path/track with no known surface ("Mostly paved":
+soft +0.35/+0.6, unknown +0.15).
+
+Map camera: never `setPadding(0)` on its own (the view jumps); MapView clears padding with a
+`jumpTo` that keeps the screen middle, then `fitBounds`. Loop on/off does not refit.
+
 Running profile options: `avoid_unpaved` (Surface), `prefer_green` (Scenery),
 `prefer_lit` (Light: "Lit streets"; lit=yes data is sparse, mostly avoids dark tracks).
 Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` penalty.

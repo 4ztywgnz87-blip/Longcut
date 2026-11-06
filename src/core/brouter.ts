@@ -178,11 +178,14 @@ function roadKind(t: Record<string, string>): RoadKind {
   }
 }
 
-const PAVED = new Set(['paved', 'asphalt', 'concrete', 'paving_stones', 'sett', 'cobblestone', 'concrete:plates', 'metal', 'wood']);
+const PAVED = new Set(['paved', 'asphalt', 'concrete', 'paving_stones', 'sett', 'cobblestone', 'concrete:plates', 'concrete:lanes', 'metal', 'wood']);
+/** Half-paved: gravel, dolomite, crushed stone. Runs fine, so not counted as unpaved. */
+const HALF_PAVED = new Set(['compacted', 'fine_gravel', 'gravel', 'pebblestone', 'grass_paver']);
 
+/** Soft ground (dirt, grass, sand, mud, forest paths), or a path or field track with no known surface. */
 function isUnpaved(t: Record<string, string>): boolean {
-  if (t.surface) return !PAVED.has(t.surface);
-  if (t.highway === 'track') return t.tracktype !== 'grade1';
+  if (t.surface) return !PAVED.has(t.surface) && !HALF_PAVED.has(t.surface);
+  if (t.highway === 'track') return t.tracktype !== 'grade1' && t.tracktype !== 'grade2';
   if (t.highway === 'path' || t.highway === 'bridleway') return true;
   return false;
 }
