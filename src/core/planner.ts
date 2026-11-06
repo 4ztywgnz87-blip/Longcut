@@ -26,15 +26,15 @@ export const lengthRules = (target: number) => {
     aim: target + extraOk * 0.7,
   };
 };
-const MAX_STEPS = 5;
+const MAX_STEPS = 7;
 /**
  * Route requests one plan may use. The public route server refuses ("retry later") after
- * about 35 quick requests from one phone, so staying under that keeps planning fast,
- * also for "New routes" right after. When it's used up, the best routes so far are shown.
+ * about 35 quick requests from one phone. Easy trips stop early anyway (as soon as 3 good
+ * routes are in); this only caps the hard ones. Quality comes first, so it is not tight.
  */
-const REQUEST_BUDGET = 30;
+const REQUEST_BUDGET = 40;
 /** Extra requests, once, when the budget gave fewer than 3 routes (hard places: rivers, motorways). */
-const EXTRA_BUDGET = 15;
+const EXTRA_BUDGET = 20;
 /** After this long, stop refining and show the best routes found so far. */
 const TIME_BUDGET_MS = 30_000;
 /** Rounds of fresh variants to try when the first round gives fewer than 3 good routes. */
@@ -400,7 +400,9 @@ export async function planRoutes(
   // Within the normal budget, keep going until at most one route is short; the extra
   // budget is only for getting 3 routes at all.
   let extra = true;
-  for (let round = 0; round < MAX_ROUNDS + 1 && Date.now() < deadline && !busy; round++) {
+  // A busy server ("retry later") doesn't end the search: requests pause and continue
+  // until the time budget runs out.
+  for (let round = 0; round < MAX_ROUNDS + 1 && Date.now() < deadline; round++) {
     if (round > 0 && pick(1).length === 3) break;
     if (budget.left <= 0) {
       if (!extra || chosen.length === 3) break;
