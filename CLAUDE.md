@@ -20,6 +20,18 @@ exports it to a Garmin watch.
   feel and polish (smooth panel, clean look). Show results, keep explanations short.
 - Always test changes yourself (Playwright, phone-sized) before reporting; then commit,
   push to `main` and wait for the deploy to finish.
+- **How he likes to work** (learned over many sessions):
+  - Judge visual work as a critical graphic/UI designer *and* as a plain user; he asks for
+    "flawless, smooth" and notices small jumps. Iterate yourself (look → fix → look again,
+    up to ~5 rounds) before reporting; measure objectively where you can (see "Verifying").
+  - Quality of routes beats speed: never trade route quality for fewer requests without
+    measuring (`scripts/quality.ts`).
+  - Reports: outcome first, in Dutch, short, honest caveats (what you could not test, e.g.
+    Safari). Send images/videos (SendUserFile) for visual changes; MP4 (h264) plays on iPhone.
+  - Proposes ideas loosely ("fade it or something, or a better idea"): pick the best
+    solution, explain the why in one or two sentences.
+  - Warn him before anything that can lose his localStorage data (re-adding the
+    home-screen app does).
 
 ## Decisions already made (don't reopen without being asked)
 
@@ -115,7 +127,11 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   start and finish are set** (never with a single point → no jumping).
 - Edit panel: Start / Finish (search, current location, pick on map, favourites ★,
   recent places), loop toggle, distance stepper, collapsible **Options** row
-  (Surface Paved/Mixed/Trail, Scenery, Light segmented controls).
+  (Surface Paved/Mixed/Trail, Scenery Any/Green, Light Daylight/Lit streets; short
+  one-line labels on purpose, long ones wrapped on phones). "Green" = BRouter's
+  `estimated_forest_class` (forest/wood around the way; parks are not in that data).
+  Tapping Finish opens search even with Loop on (choosing a place turns Loop off).
+- Distance input: invalid while typing → Plan button disabled "Distance: 1–100 km".
 - Results and saved routes share one view (`routeBody` in App.tsx): big km, stats (Busy /
   Unpaved / Twice / Climb, tap one for an explanation), elevation sparkline, Send to Garmin,
   Maps (Google/Apple approximation), New routes; results add Save, saved routes add Delete
@@ -173,9 +189,47 @@ MapView is lazy-loaded (panel shows before the map code). `public/sw.js` is a sm
 worker (production only): page network-first, `/assets/` cache-first, OpenFreeMap style/fonts
 stale-while-revalidate. Bump `VERSION` in sw.js if caching rules change.
 
+## Verifying changes (tools that worked)
+
+- **Phone e2e:** `node scripts/e2e.cjs http://127.0.0.1:4173/` (waits until all route tabs
+  are in; the first route shows early). An `errors:` line with 403s usually means the route
+  server was refusing because of parallel test load: rerun once before worrying.
+- **Route quality:** `scripts/quality.ts` (19 real trips; `compare` mode). Compare against an
+  older commit via `git worktree add`. Repeat single trips to tell variance from real change.
+- **Start screen frames:** temporarily patch `index.html` (never commit it) so time can be
+  frozen: `var slow = 1, freeze = new URLSearchParams(location.search).get('splashfreeze');`,
+  `var raw = freeze ? +freeze : (now - t0) / slow, …`, after `measure(); measured = true;`
+  add `if (freeze) { held = 0; t = raw; }`, keep the rAF loop running while `freeze`, and make
+  `maybeLeave` return when `freeze`. Then screenshot `?splashfreeze=1400` etc. (DPR 3–4 for
+  detail). CSS transitions (letter cover, flight) don't freeze: check those on video.
+- **Smoothness metric:** screenshots every 10 ms of the L area (frozen time) or the frames
+  of a real-time Playwright video (`recordVideo`, then `ffmpeg` to PNGs); sum of absolute
+  pixel change per step. A jump = a spike vs its neighbours.
+- **Hand-over exactness:** at the end time compare the drawing alone vs the text L alone
+  (pixel diff); it was 0 differing pixels when the twin was exact.
+- **Main-thread stalls:** `PerformanceObserver({ type: 'longtask' })` in an init script;
+  there must be none during the morph (MapLibre is the usual cause; headless Chromium
+  renders WebGL in software, so it exaggerates).
+- **Not available here:** WebKit/Safari (don't install Playwright browsers), real iPhone,
+  GPU. Tell Dauwe when a result depends on Safari.
+- **Glyph data:** the L outline and metrics of Barlow Condensed 900 italic were read with
+  `fontTools` (pip) from `node_modules/@fontsource/barlow-condensed/files/*900-italic.woff`:
+  cap height 700, stem 181 thick leaning 7° (x = 183.1 − 0.1219·(700 − y) at the centre),
+  foot 161 thick, advance 433, UPM 1000.
+- **App icon PNGs:** render `public/favicon.svg` without the rounded rect (full-bleed) at
+  512/192/180 with Playwright `setContent`, save as RGB.
+
+## Open questions / possible next steps
+
+- **Own BRouter server** (Docker image `saesh/brouter-server` or official BRouter on a ~€4–5
+  per month VPS, Belgium segments only) would remove the public server's rate limit and make
+  planning much faster. Needs Dauwe to create/pay an account; he hasn't decided.
+- Safari rendering of the start screen is untested here (the cross-fade should hide small
+  differences).
+
 ## Ideas not done yet (only if asked)
 
 Backup/restore of saved routes; time-based distance (pace × time) and run-time estimate;
 water/toilets along long routes; "not via here" (exclude a stretch); intermediate stops;
 drag to edit a route; wind and sunset hints; plan a week ahead; cycling profile; Dutch
-UI; share a route link; second routing server as fallback.
+UI; share a route link; second routing server as fallback (no other public BRouter found).
