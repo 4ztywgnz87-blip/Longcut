@@ -40,6 +40,11 @@ exports it to a Garmin watch.
   tried and **removed** (200 req/day free limit, no quiet-road data in Belgium).
 - **Address search:** Flemish address register (geo.api.vlaanderen.be, fast) + Photon
   (photon.komoot.io, slower, knows POIs) queried in parallel; reverse lookup tries Flanders first.
+  The register returns at most 5 matches, alphabetically: a second query adds your own
+  municipality ("Grote Markt" → the one nearby first). Its municipality results are a point in
+  the middle of the territory and match merged municipalities ("Kemzeke" → "Stekene"): kept
+  only when that name was typed and Photon has no town for it. Photon towns/villages matching
+  what was typed go on top, labelled "Town" / "Village" / "Station".
 - **Map:** MapLibre GL + OpenFreeMap **dark** style. Attribution must stay (OSM licence);
   it is styled as a small muted (i).
 - **Dark theme only.** A light theme was built and **removed** on request.
@@ -61,7 +66,10 @@ exports it to a Garmin watch.
 ## How the planner works (`src/core/planner.ts`)
 
 1. Shortest route A→B first: if longer than the target (+5%) → "too-short" message
-   with a "Use N km" button; if it already fits → return it.
+   with a "Plan N km instead" button (plans at once). If it already fits → it is shown at
+   once (made exactly long enough) and the search for alternatives goes on behind it with
+   the normal budget, no extra (before Nov 2026 it returned only that one route, and
+   "New routes" gave the same one again).
 2. Via points on an **ellipse with foci A and B** (2- and 3-via templates, left/right);
    loops use a square-ish shape through A. Each template's size is fitted
    (scale/interpolate) until length is within **0…+500 m** (`lengthRules`: ideal 0…+min(500 m, 5%);
@@ -71,7 +79,12 @@ exports it to a Garmin watch.
    angles (`variant`). Max 7 tries per template; aim = target + 350 m (`extraOk*0.7`); a
    template's best try counts short as twice as bad. The first template calibrates the
    size→length ratio, the others wait for it (≤2.5 s). Templates stop early only when 3
-   non-short routes all score ≤ 0.15 (`GOOD_SCORE`); stopping on length alone lost good routes. Extra **rounds** of fresh variants until 3 different routes
+   non-short routes all score ≤ 0.15 (`GOOD_SCORE`); stopping on length alone lost good routes.
+   **Every try of an acceptable length is a candidate** (`consider`), not only each template's
+   closest one. With 3 routes in, one more round runs only while a route scores worse than
+   `FAIR_SCORE` 0.25 and ≥ 8 requests are left ("polishing"; stops as soon as all three are
+   ≤ 0.25). Target < 1.3 × the direct route (`slight`): two 1-via templates are added and two
+   routes are enough (no extra budget). Extra **rounds** of fresh variants until 3 different routes
    (similarity ≤ 70%) with **at most 1 short** (2 only if nothing better). **Request budget
    40 per plan** (+20 once if fewer than 3 routes; a busy server doesn't end the search): brouter.de answers "Please, retry later!"
    (403, from its front end, not BRouter itself) after ~35 quick requests from one IP.
@@ -80,9 +93,11 @@ exports it to a Garmin watch.
    (beyond +500 m) ×0.5, km short ×0.25 (+ its run-twice share), run-twice ×4, busy roads ×3,
    noisy (next to motorways) ×1.5, unpaved ×0.5 (only when "Mostly paved").
    Routes that are a little short get an **out-and-back at the finish** (`padToTarget`: past the
-   finish and back via one extra BRouter call; fallback: back along the route) → `extraM`,
+   finish and back via one extra BRouter call; fallback, and always under 20 m: back along the
+   route; nothing is ever shown shorter than asked) → `extraM`,
    shown as "Includes N m out and back at the finish".
-5. **Early result:** the first route that is non-short and scores ≤ `GOOD_SCORE` is sent via
+5. **Early result:** the first route that is non-short and scores ≤ `GOOD_SCORE` (or, at the
+   end of a round, ≤ `SHOW_SCORE` 0.2: it keeps tab 1, so never a mediocre one) is sent via
    `PlanRequest.onProgress` and shown at once (other tabs show pulsing dots, `pending` in App);
    the final choice is made as before and that route (or the most similar chosen one) keeps
    tab 1. Run-to-run variance in which routes are found exists anyway (budget is shared in
@@ -92,8 +107,13 @@ exports it to a Garmin watch.
 6. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
    "Earlier / Set n of m / Later". `PlanRequest.signal` lets the Cancel button stop a search.
 
-BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, in-session
-response cache, on 403 "retry later" → **all** requests pause (`pauseUntil`), short retries
+A dropped connection mid-search keeps the routes found so far (error only when there are
+none). Measured Nov 2026 on the 19 quality trips, old → new: average score 0.160 → 0.145,
+worst of the three 0.215 → 0.194, noisy 3.5 → 2.9 %, twice 0.34 → 0.28 %, routes within
+0…+500 m 47 → 50 of 56, requests 28.5 → 30.3 per plan; real time 4–6 s as before.
+
+BRouter client (`src/core/brouter.ts`): max 4 parallel, 120 ms spacing, a failed fetch is
+retried once (mobile data), in-session response cache, on 403 "retry later" → **all** requests pause (`pauseUntil`), short retries
 (1.5–4.5 s) and 2 parallel for a minute; throws `RouterError(busy)` → app shows a neutral
 "taking longer than usual". "operation killed" (server overloaded) → same request retried.
 
@@ -132,6 +152,9 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   `estimated_forest_class` (forest/wood around the way; parks are not in that data).
   Tapping Finish opens search even with Loop on (choosing a place turns Loop off).
 - Distance input: invalid while typing → Plan button disabled "Distance: 1–100 km".
+- Opening Options or a message scrolls the panel so the Plan button stays in view (small
+  screens, Safari with its bars). `.app` uses `overflow: clip` so nothing can shift the app.
+- After "Send to Garmin" the next steps stay on screen under the button (`exported`).
 - Results and saved routes share one view (`routeBody` in App.tsx): big km, stats (Busy /
   Unpaved / Twice / Climb, tap one for an explanation), elevation sparkline, Send to Garmin,
   Maps (Google/Apple approximation), New routes; results add Save, saved routes add Delete
@@ -187,15 +210,24 @@ publishes to GitHub Pages (~1–2 min). Check with
 `vite.config.ts` uses `base: './'` and bundles the MapLibre worker (`?worker&url`).
 MapView is lazy-loaded (panel shows before the map code). `public/sw.js` is a small service
 worker (production only): page network-first, `/assets/` cache-first, OpenFreeMap style/fonts
-stale-while-revalidate. Bump `VERSION` in sw.js if caching rules change.
+stale-while-revalidate. Bump `VERSION` in sw.js if caching rules change. On a first visit the
+page tells the worker which files it already loaded (`keep` message), so the app also starts
+offline after one visit; cache lookups ignore `Vary`.
 
 ## Verifying changes (tools that worked)
 
 - **Phone e2e:** `node scripts/e2e.cjs http://127.0.0.1:4173/` (waits until all route tabs
   are in; the first route shows early). An `errors:` line with 403s usually means the route
   server was refusing because of parallel test load: rerun once before worrying.
-- **Route quality:** `scripts/quality.ts` (19 real trips; `compare` mode). Compare against an
-  older commit via `git worktree add`. Repeat single trips to tell variance from real change.
+- **Route quality:** `scripts/quality.ts` (19 real trips, fixed coordinates; `compare` mode).
+  Compare against an older commit via `git worktree add`. Repeat single trips to tell variance
+  from real change. Its slow request spacing makes an uncached run hit the 30 s time budget:
+  **run each version twice and compare the second (cached) runs.** `scripts/trace.ts
+  <lon,lat> <lon,lat> <km> [repoDir]` prints every try of one trip. Trips "only a little
+  longer than direct" worth checking by hand from Nieuwkerken (4.178,51.1934): Kemzeke 10,
+  Temse 10, Lokeren 19, Stekene 13, Beveren 9.
+- photon.komoot.io is flaky through this sandbox's proxy (often refused): search tests may
+  show only Flemish results.
 - **Start screen frames:** temporarily patch `index.html` (never commit it) so time can be
   frozen: `var slow = 1, freeze = new URLSearchParams(location.search).get('splashfreeze');`,
   `var raw = freeze ? +freeze : (now - t0) / slow, …`, after `measure(); measured = true;`

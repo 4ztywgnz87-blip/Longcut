@@ -20,5 +20,17 @@ createRoot(document.getElementById('root')!).render(
 // Keep the app on the phone: later starts load from the device and work offline
 // (saved routes can still be sent to the watch without a connection).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  window.addEventListener('load', async () => {
+    try {
+      await navigator.serviceWorker.register('./sw.js');
+      const reg = await navigator.serviceWorker.ready;
+      // hand over the files this visit already loaded (see sw.js), once things have settled
+      setTimeout(() => {
+        const urls = performance.getEntriesByType('resource').map((r) => r.name).filter((u) => u.startsWith(location.origin));
+        reg.active?.postMessage({ type: 'keep', urls });
+      }, 2500);
+    } catch {
+      /* the app works without it */
+    }
+  });
 }

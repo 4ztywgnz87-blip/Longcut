@@ -27,8 +27,8 @@ export default function ElevationSpark({ coords, elevations }: { coords: LngLat[
         <path d={path} className="spark-line" />
       </svg>
       <figcaption>
-        <span>{Math.round(min)} m</span>
-        <span>{Math.round(max)} m</span>
+        <span>Lowest {Math.round(min)} m</span>
+        <span>Highest {Math.round(max)} m</span>
       </figcaption>
     </figure>
   );

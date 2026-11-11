@@ -1,7 +1,7 @@
 {
   "name": "Longcut",
   "short_name": "Longcut",
-  "description": "Plan a run from A to B with exactly the distance you want.",
+  "description": "Running routes of exactly the distance you want: from A to B or a loop, over quiet roads, straight to your Garmin.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

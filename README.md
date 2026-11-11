@@ -1,6 +1,8 @@
 # LONGCUT
 
-*The opposite of a shortcut.* A route planner for runners: pick a start, a finish and how many kilometers you want to run. LONGCUT makes the detour and exports it as GPX for your Garmin.
+*The opposite of a shortcut.* A route planner for runners: pick a start, a finish (or a loop) and how many kilometers you want to run. LONGCUT makes the detour over quiet roads and saves it as a course file for your Garmin.
+
+**Use it:** https://4ztywgnz87-blip.github.io/Longcut/ (add it to your phone's home screen).
 
 See [`docs/plan.md`](docs/plan.md) for the full plan (Dutch).
 

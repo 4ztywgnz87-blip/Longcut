@@ -29,7 +29,16 @@ const cache = {
   },
 };
 
+/** Fixed coordinates for the test trips, so the check doesn't depend on a search service. */
+const COORDS: Record<string, [number, number]> = {
+  'Nieuwkerken-Waas': [4.178, 51.1934], 'Grote Markt, Sint-Niklaas': [4.1393, 51.1642], Kemzeke: [4.0784, 51.2071],
+  'Beveren-Waas': [4.2573, 51.2137], Stekene: [4.0365, 51.2095], Temse: [4.2135, 51.1265], Lokeren: [3.9905, 51.1045],
+  'Sint-Gillis-Waas': [4.1235, 51.2195], 'Linkeroever, Antwerpen': [4.3745, 51.2245], 'Antwerpen-Centraal': [4.4211, 51.2172],
+  Wilrijk: [4.3945, 51.1685], 'Gent-Sint-Pieters': [3.7105, 51.0362], Lochristi: [3.832, 51.0985], 'Korenmarkt, Gent': [3.7219, 51.0549],
+};
+
 async function geo(q: string): Promise<[number, number]> {
+  if (COORDS[q]) return COORDS[q];
   const f = `${CACHE}/geo-${hash(q)}.json`;
   try {
     return JSON.parse(await readFile(f, 'utf8'));

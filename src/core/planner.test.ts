@@ -92,7 +92,7 @@ describe('planRoutes', () => {
     }
   });
 
-  it('adds an out-and-back at the finish when the route is a little short', async () => {
+  it('offers several routes, none short, when the direct route almost fits', async () => {
     // the direct route is ~5.6 km (4.5 km × 1.25); ask a bit more than that
     const router = new FakeRouter();
     const direct = await router.route([home, parents]);
@@ -101,9 +101,51 @@ describe('planRoutes', () => {
     const r = await planRoutes({ start: home, end: parents, distanceKm: want, prefs }, router);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const route = r.routes[0];
-    expect(route.stats.length).toBeCloseTo(want * 1000, 0);
-    expect(route.extraM).toBeGreaterThan(150);
-    expect(haversine(route.coords.at(-1)!, parents)).toBeLessThan(1);
+    // the direct route (made long enough) is one option; other routes of that length come with it
+    expect(r.routes.length).toBeGreaterThan(1);
+    for (const x of r.routes) {
+      expect(x.stats.length).toBeGreaterThan(want * 1000 - 1);
+      expect(haversine(x.coords.at(-1)!, parents)).toBeLessThan(1);
+    }
+  });
+
+  it('adds an out-and-back at the finish when only the direct route is found', async () => {
+    // every detour fails: only the direct route (200 m short) is left
+    const router = new FakeRouter();
+    const route = router.route.bind(router);
+    router.route = async (points) => {
+      if (points.length > 2 && haversine(points[0], home) < 1) throw new TypeError('Failed to fetch');
+      return route(points);
+    };
+    const direct = await route([home, parents]);
+    const len = direct.segments.reduce((a, s) => a + s.length, 0);
+    const want = Math.round(len + 200) / 1000;
+    const r = await planRoutes({ start: home, end: parents, distanceKm: want, prefs }, router);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.routes).toHaveLength(1);
+    expect(r.routes[0].stats.length).toBeCloseTo(want * 1000, 0);
+    expect(r.routes[0].extraM).toBeGreaterThan(150);
+    expect(haversine(r.routes[0].coords.at(-1)!, parents)).toBeLessThan(1);
+  });
+
+  it('keeps the routes it found when the connection drops halfway', async () => {
+    const router = new FakeRouter();
+    const route = router.route.bind(router);
+    router.route = async (points) => {
+      if (router.calls >= 12) throw new TypeError('Failed to fetch');
+      return route(points);
+    };
+    const r = await planRoutes({ start: home, end: parents, distanceKm: 15, prefs }, router);
+    expect(r.ok).toBe(true);
+  });
+
+  it('reports a dead connection instead of "no route"', async () => {
+    const router: Router = {
+      route: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    };
+    await expect(planRoutes({ start: home, end: home, distanceKm: 10, prefs }, router)).rejects.toThrow('Failed to fetch');
   });
 });

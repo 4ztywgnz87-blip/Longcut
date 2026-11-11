@@ -117,17 +117,25 @@ export class BRouterRouter implements Router {
 
   private async get(url: string, ro: RouteOptions, signal?: AbortSignal): Promise<BRouterResponse> {
     for (let attempt = 0; ; attempt++) {
-      const res = await this.gate.run(async () => {
-        const paused = this.pauseUntil - Date.now();
-        if (paused > 0) await sleep(paused);
-        signal?.throwIfAborted();
-        const wait = this.lastStart + (this.opts.minIntervalMs ?? 150) - Date.now();
-        this.lastStart = Math.max(Date.now(), this.lastStart + (this.opts.minIntervalMs ?? 150));
-        if (wait > 0) await sleep(wait);
-        signal?.throwIfAborted();
-        this.requestCount++;
-        return fetch(url, { signal });
-      });
+      let res: Response;
+      try {
+        res = await this.gate.run(async () => {
+          const paused = this.pauseUntil - Date.now();
+          if (paused > 0) await sleep(paused);
+          signal?.throwIfAborted();
+          const wait = this.lastStart + (this.opts.minIntervalMs ?? 150) - Date.now();
+          this.lastStart = Math.max(Date.now(), this.lastStart + (this.opts.minIntervalMs ?? 150));
+          if (wait > 0) await sleep(wait);
+          signal?.throwIfAborted();
+          this.requestCount++;
+          return fetch(url, { signal });
+        });
+      } catch (e) {
+        // a hiccup in the connection (common on mobile data): try once more before giving up
+        if (signal?.aborted || !(e instanceof TypeError) || attempt >= 1) throw e;
+        await sleep(600);
+        continue;
+      }
       const text = await res.text();
       if (res.ok) return JSON.parse(text) as BRouterResponse;
 
@@ -158,6 +166,7 @@ export class BRouterRouter implements Router {
       }
       if (res.status >= 500 && attempt < 3) {
         await sleep(1500 * (attempt + 1));
+        signal?.throwIfAborted();
         continue;
       }
       const noRoute = /not mapped|island|no route|operation killed|position not/i.test(text);

@@ -109,6 +109,8 @@ export default function App() {
   const flyToMe = useRef(false);
   const [elapsed, setElapsed] = useState(0);
   const [mapsOpen, setMapsOpen] = useState(false);
+  // after "Send to Garmin": the next steps stay on screen (a short message is easy to miss)
+  const [exported, setExported] = useState(false);
   const [mapOn, setMapOn] = useState(!splash);
   useEffect(() => {
     if (!splash) return;
@@ -153,6 +155,7 @@ export default function App() {
   // close menus and explanations when switching screens or routes
   useEffect(() => {
     setMapsOpen(false);
+    setExported(false);
     setInfo(null);
     setConfirmDelete(false);
     setSwipeOpen(null);
@@ -352,6 +355,14 @@ export default function App() {
     setView(planBack.current);
   };
 
+  // Opening the options or getting a message makes the panel taller than a small screen:
+  // bring the Plan button (the bottom of the panel) back into view.
+  useEffect(() => {
+    if (view.k !== 'edit' || (!optionsOpen && !problem)) return;
+    const el = sheet.current;
+    if (el && el.scrollHeight > el.clientHeight) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [optionsOpen, problem, view.k]);
+
   // --- distance input ------------------------------------------------------
   const commitKm = (v: number) => {
     const clamped = Math.min(MAX_KM, Math.max(MIN_KM, Math.round(v * 10) / 10));
@@ -373,7 +384,8 @@ export default function App() {
     const name = finishName ? `${fmtKm(d.lengthM)} km ${finishName}` : `${fmtKm(d.lengthM)} km loop`;
     const file = routeFileName(d.lengthM / 1000, finishName ?? 'loop', 'fit');
     downloadFile(file, (await loadFit()).toFit(name, d.coords, d.elevations), FIT_TYPE);
-    setToast('Saved to Downloads. Open the file → Share → Connect.');
+    setExported(true);
+    setToast('Route file downloaded.');
   };
 
   const saveActive = () => {
@@ -509,6 +521,11 @@ export default function App() {
       <button type="button" className="btn primary big" onClick={() => doExport(d, o.finishName)}>
         <Icon name="download" /> Send to Garmin
       </button>
+      {exported && (
+        <p className="hint export-note">
+          Next: open the file in Downloads, tap Share and choose Connect. It opens there as a course you can send to your watch.
+        </p>
+      )}
       {o.actions}
       {mapsOpen && (
         <div className="maps-menu">
@@ -779,8 +796,16 @@ export default function App() {
                   <p>
                     The shortest route is already <b>{problem.shortestKm.toFixed(1)} km</b>, longer than {km} km.
                   </p>
-                  <button type="button" className="btn small" onClick={() => commitKm(Math.ceil(problem.shortestKm * 1.02))}>
-                    Use {Math.ceil(problem.shortestKm * 1.02)} km
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => {
+                      const n = Math.ceil(problem.shortestKm * 1.02);
+                      commitKm(n);
+                      run({ more: false, variation: 0, km: n });
+                    }}
+                  >
+                    Plan {Math.ceil(problem.shortestKm * 1.02)} km instead
                   </button>
                 </>
               ) : (
