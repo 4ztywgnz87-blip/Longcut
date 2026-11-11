@@ -75,7 +75,8 @@ button:disabled { opacity: 0.35; cursor: default; }
   opacity: 0.7;
 }
 .maplibregl-ctrl.maplibregl-ctrl-attrib.maplibregl-compact-show { opacity: 1; padding: 2px 26px 2px 8px; }
-.maplibregl-ctrl-attrib a { color: var(--muted); }
+/* beats maplibre-gl.css (loaded later with the lazy map chunk), whose links are near-black */
+.maplibregl-ctrl.maplibregl-ctrl-attrib a { color: var(--muted); }
 .maplibregl-ctrl-attrib-button {
   width: 22px !important; height: 22px !important;
   background-size: 16px !important;
