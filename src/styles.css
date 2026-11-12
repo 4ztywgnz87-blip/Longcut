@@ -469,7 +469,6 @@ button:disabled { opacity: 0.35; cursor: default; }
   .field-value { font-size: 15px; }
   .icon-btn { width: 38px; height: 38px; }
   .field-actions { gap: 6px; }
-  .add-stop { left: 7px; }
   .distance-row { gap: 6px; }
   .stepper { grid-template-columns: 48px 1fr 48px; gap: 6px; }
   .step { min-height: 50px; }
@@ -587,16 +586,16 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: var(--accent); border: 2px solid var(--bg);
   box-shadow: 0 0 0 1.5px var(--accent);
 }
-/* the + sits on the line between Start and Finish, under the dots: "add a point here" */
+/* the + sits in the middle of the line between Start and Finish: "add a point here" */
 .add-stop {
-  position: absolute; left: 9px; top: 50%;
-  width: 20px; height: 20px; margin-top: -10px; padding: 0;
+  position: absolute; left: 50%; top: 50%;
+  width: 24px; height: 24px; margin: -12px 0 0 -12px; padding: 0;
   display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: 50%;
   background: var(--surface-2); color: var(--muted);
   z-index: 1;
 }
-.add-stop::before { content: ''; position: absolute; inset: -8px -12px; } /* bigger tap area */
+.add-stop::before { content: ''; position: absolute; inset: -8px -10px; } /* bigger tap area */
 .add-stop:active { color: var(--accent); border-color: var(--accent); }
 .stop-row {
   display: grid; grid-template-rows: 1fr;

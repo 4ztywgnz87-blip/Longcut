@@ -739,7 +739,7 @@ export default function App() {
                 </div>
               ) : (
                 <button type="button" className="add-stop" aria-label="Add a stop" onClick={() => setView({ k: 'search', field: 'stop' })}>
-                  <Icon name="plus" size={13} />
+                  <Icon name="plus" size={14} />
                 </button>
               )}
               <button
