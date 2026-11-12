@@ -160,8 +160,10 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   one-line labels on purpose, long ones wrapped on phones). "Green" = BRouter's
   `estimated_forest_class` (forest/wood around the way; parks are not in that data).
   Tapping Finish opens search even with Loop on (choosing a place turns Loop off).
-  **Stop:** a small round + in the middle of the line between Start and Finish (Dauwe chose the spot) opens search
-  for a stop; the Stop row has a × that folds the row away (grid-rows transition). One stop max.
+  **Stop:** a small round + in the middle of the line between Start and Finish (Dauwe chose the
+  spot; the line stops just before and after it) slides in an empty Stop row ("Choose stop");
+  tapping that row opens search (Dauwe wanted it in two steps). The row's × folds it away
+  (grid-rows transition). One stop max.
   Map: stop = small volt dot with a dark ring. Saved routes keep `stop` + `stopM`.
 - Distance input: invalid while typing → Plan button disabled "Distance: 1–100 km".
 - Opening Options or a message scrolls the panel so the Plan button stays in view (small

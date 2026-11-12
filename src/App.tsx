@@ -86,6 +86,9 @@ export default function App() {
   // an optional place to pass on the way
   const [stop, setStop] = useState<Place | null>(null);
   const [stopLeaving, setStopLeaving] = useState(false);
+  // the Stop row is shown (empty until a place is chosen), and whether it is sliding in
+  const [stopOpen, setStopOpen] = useState(false);
+  const [stopEntering, setStopEntering] = useState(false);
   // the stop the routes on screen were planned with
   const [planStop, setPlanStop] = useState<Place | null>(null);
   const [loop, setLoop] = useState(false);
@@ -456,6 +459,7 @@ export default function App() {
     setTo(isLoop ? null : s.to);
     setLoop(isLoop);
     setStop(s.stop ?? null);
+    setStopOpen(!!s.stop);
     commitKm(s.requestedKm);
     run({ more: false, variation: 0, from: s.from, end: isLoop ? s.from : s.to, stop: s.stop ?? null, km: s.requestedKm });
   };
@@ -704,12 +708,14 @@ export default function App() {
                   <span className={`field-value ${from ? '' : 'empty'}`}>{from ? from.name : 'Choose start'}</span>
                 </span>
               </button>
-              {stop ? (
+              {stop || stopOpen ? (
                 <div
-                  className={`stop-row ${stopLeaving ? 'leaving' : ''}`}
+                  className={`stop-row ${stopLeaving ? 'leaving' : ''} ${stopEntering ? 'entering' : ''}`}
+                  onAnimationEnd={(e) => e.target === e.currentTarget && setStopEntering(false)}
                   onTransitionEnd={(e) => {
                     if (stopLeaving && e.target === e.currentTarget) {
                       setStop(null);
+                      setStopOpen(false);
                       setStopLeaving(false);
                     }
                   }}
@@ -719,7 +725,7 @@ export default function App() {
                       <span className="dot dot-stop" aria-hidden="true" />
                       <span className="field-text">
                         <span className="field-label">Stop</span>
-                        <span className="field-value">{stop.name}</span>
+                        <span className={`field-value ${stop ? '' : 'empty'}`}>{stop ? stop.name : 'Choose stop'}</span>
                       </span>
                     </button>
                     <button
@@ -729,8 +735,10 @@ export default function App() {
                       onClick={() => {
                         setProblem(null);
                         // fold the row away, then drop the stop (see onTransitionEnd)
-                        if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStop(null);
-                        else setStopLeaving(true);
+                        if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                          setStop(null);
+                          setStopOpen(false);
+                        } else setStopLeaving(true);
                       }}
                     >
                       <Icon name="close" size={16} />
@@ -738,9 +746,20 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <button type="button" className="add-stop" aria-label="Add a stop" onClick={() => setView({ k: 'search', field: 'stop' })}>
-                  <Icon name="plus" size={14} />
-                </button>
+                <div className="stop-divider">
+                  <button
+                    type="button"
+                    className="add-stop"
+                    aria-label="Add a stop"
+                    onClick={() => {
+                      // first the Stop row slides in; tapping it opens the search
+                      setStopOpen(true);
+                      setStopEntering(!matchMedia('(prefers-reduced-motion: reduce)').matches);
+                    }}
+                  >
+                    <Icon name="plus" size={14} />
+                  </button>
+                </div>
               )}
               <button
                 type="button"

@@ -586,14 +586,19 @@ button:disabled { opacity: 0.35; cursor: default; }
   background: var(--accent); border: 2px solid var(--bg);
   box-shadow: 0 0 0 1.5px var(--accent);
 }
-/* the + sits in the middle of the line between Start and Finish: "add a point here" */
+/* No stop yet: the line between Start and Finish, with a small + in the middle of it */
+.stop-divider { position: relative; height: 1px; z-index: 1; }
+.stop-divider::before, .stop-divider::after {
+  content: ''; position: absolute; top: 0; height: 1px; background: var(--line);
+}
+.stop-divider::before { left: 0; right: calc(50% + 18px); }
+.stop-divider::after { right: 0; left: calc(50% + 18px); }
 .add-stop {
-  position: absolute; left: 50%; top: 50%;
+  position: absolute; left: 50%; top: 0;
   width: 24px; height: 24px; margin: -12px 0 0 -12px; padding: 0;
   display: grid; place-items: center;
   border: 1px solid var(--line); border-radius: 50%;
   background: var(--surface-2); color: var(--muted);
-  z-index: 1;
 }
 .add-stop::before { content: ''; position: absolute; inset: -8px -10px; } /* bigger tap area */
 .add-stop:active { color: var(--accent); border-color: var(--accent); }
@@ -603,7 +608,10 @@ button:disabled { opacity: 0.35; cursor: default; }
   transition: grid-template-rows 0.2s ease, opacity 0.2s ease, border-top-width 0.2s ease;
 }
 .stop-row.leaving { grid-template-rows: 0fr; opacity: 0; border-top-width: 0; }
+.stop-row.entering { animation: stop-in 0.22s ease; }
+@keyframes stop-in { from { grid-template-rows: 0fr; opacity: 0; border-top-width: 0; } }
 .stop-row + .field { border-top: 1px solid var(--line); }
+.stop-divider + .field { border-top: 0; }
 .stop-inner { display: flex; align-items: center; min-height: 0; overflow: hidden; }
 .stop-inner .field { flex: 1; }
 .stop-remove {
