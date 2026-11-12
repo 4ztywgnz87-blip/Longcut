@@ -162,7 +162,8 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   Tapping Finish opens search even with Loop on (choosing a place turns Loop off).
   **Stop:** a small round + in the middle of the line between Start and Finish (Dauwe chose the
   spot; the line stops just before and after it) slides in an empty Stop row ("Choose stop");
-  tapping that row opens search (Dauwe wanted it in two steps). The row's × folds it away
+  tapping that row opens search (Dauwe wanted it in two steps). All rows equal height (Dauwe's
+  wish), with padding above/below the name so a long Start name stays clear of the +. The row's × folds it away
   (grid-rows transition). One stop max.
   Map: stop = small volt dot with a dark ring. Saved routes keep `stop` + `stopM`.
 - Distance input: invalid while typing → Plan button disabled "Distance: 1–100 km".

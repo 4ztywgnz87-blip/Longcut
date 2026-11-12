@@ -757,7 +757,7 @@ export default function App() {
                       setStopEntering(!matchMedia('(prefers-reduced-motion: reduce)').matches);
                     }}
                   >
-                    <Icon name="plus" size={14} />
+                    <Icon name="plus" size={13} />
                   </button>
                 </div>
               )}
