@@ -148,4 +148,52 @@ describe('planRoutes', () => {
     };
     await expect(planRoutes({ start: home, end: home, distanceKm: 10, prefs }, router)).rejects.toThrow('Failed to fetch');
   });
+
+  describe('with a stop', () => {
+    const stop: LngLat = [4.16, 51.2]; // off to the side of home → parents
+    const passes = (coords: LngLat[], p: LngLat) => Math.min(...coords.map((c) => haversine(c, p)));
+
+    for (const [name, end] of [['A→B', parents], ['loop', home]] as const) {
+      it(`${name}: passes the stop, right length, says where the stop is`, async () => {
+        const r = await planRoutes({ start: home, end, stop, distanceKm: 20, prefs }, new FakeRouter());
+        expect(r.ok).toBe(true);
+        if (!r.ok) return;
+        expect(r.routes.length).toBeGreaterThan(1);
+        for (const x of r.routes) {
+          expect(passes(x.coords, stop)).toBeLessThan(1);
+          expect(x.stats.length).toBeGreaterThanOrEqual(20000 - 1);
+          expect(x.stats.length).toBeLessThanOrEqual(21000);
+          expect(haversine(x.coords.at(-1)!, end)).toBeLessThan(1);
+          expect(x.stopM).toBeGreaterThan(haversine(home, stop));
+          expect(x.stopM).toBeLessThan(x.stats.length - haversine(stop, end));
+        }
+      });
+    }
+
+    it('too short when the way via the stop is already longer', async () => {
+      const r = await planRoutes({ start: home, end: parents, stop: [4.1, 51.25], distanceKm: 8, prefs }, new FakeRouter());
+      expect(r.ok).toBe(false);
+    });
+
+    it('keeps a dead-end way in to the stop', async () => {
+      // the stop is at the end of a dead-end street: the router goes to the junction,
+      // up to the stop and back down the same way
+      const junction: LngLat = [4.16, 51.2];
+      const tip: LngLat = [4.162, 51.2];
+      const router = new FakeRouter();
+      const route = router.route.bind(router);
+      router.route = async (points) => {
+        const j = points.findIndex((p) => haversine(p, tip) < 1);
+        if (j < 0) return route(points);
+        const raw = await route(points.map((p, k) => (k === j ? junction : p)));
+        const i = raw.segments.findIndex((s) => haversine(s.to, junction) < 1);
+        const segs = [...raw.segments.slice(0, i + 1), seg(junction, tip), seg(tip, junction), ...raw.segments.slice(i + 1)];
+        return { ...raw, segments: segs };
+      };
+      const r = await planRoutes({ start: home, end: parents, stop: tip, distanceKm: 20, prefs }, router);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      for (const x of r.routes) expect(passes(x.coords, tip)).toBeLessThan(1);
+    });
+  });
 });

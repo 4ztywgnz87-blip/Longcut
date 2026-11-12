@@ -15,8 +15,11 @@ export function plan(req: PlanRequest): Promise<PlanResult> {
  * Get ready while the user is still choosing: upload the running profile and fetch the
  * direct route (the planner's first step). Both land in the router's cache.
  */
-export function prepare(start: LngLat | null, end: LngLat | null, prefs: PlanPrefs): void {
+export function prepare(start: LngLat | null, end: LngLat | null, prefs: PlanPrefs, stop?: LngLat): void {
   router.warm(prefs).then(() => {
-    if (start && end && (start[0] !== end[0] || start[1] !== end[1])) router.route([start, end], prefs).catch(() => {});
+    if (!start || !end) return;
+    // the planner's first request: start → (stop →) finish
+    if (stop) router.route([start, stop, end], prefs).catch(() => {});
+    else if (start[0] !== end[0] || start[1] !== end[1]) router.route([start, end], prefs).catch(() => {});
   });
 }

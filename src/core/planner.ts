@@ -136,6 +136,85 @@ function templates(req: PlanRequest, isLoop: boolean, slight = false): Template[
   ];
 }
 
+/**
+ * A route with a stop: A → (detour) → stop → (detour) → B. The extra distance is shared
+ * out in different ways, each its own template: spread over both legs (in proportion to
+ * their length), all before the stop, or all after it. The best routes win, so the three
+ * routes on offer often differ in where the stop falls.
+ */
+function stopTemplates(req: PlanRequest, stop: LngLat, slight: boolean): Template[] {
+  const { start: a, end: b } = req;
+  const d1 = haversine(a, stop), d2 = haversine(stop, b);
+  // a leg shorter than this has no room for a detour of its own
+  const ok1 = d1 >= LOOP_THRESHOLD_M, ok2 = d2 >= LOOP_THRESHOLD_M;
+  const k = req.variation ?? 0;
+  const P = Math.PI;
+  const shift = [0, 0.3, -0.3, 0.55, -0.55, 0.15, -0.15][k % 7];
+  const at = (ts: number[]) => ts.map((t) => Math.min(P - 0.15, Math.max(0.15, t + shift)));
+  const sum = d1 + d2;
+  const make = (label: string, w1: number, side: 1 | -1, ts: number[]): Template => {
+    const leg1 = w1 > 0 ? ellipseTemplate(a, stop, side, at(ts), label) : null;
+    const leg2 = w1 < 1 ? ellipseTemplate(stop, b, side, at(ts), label) : null;
+    return {
+      label,
+      minSize: sum * 1.02,
+      vias: (size, variant) => {
+        const extra = Math.max(0, size - sum);
+        return [
+          ...(leg1 ? leg1.vias(d1 + extra * w1, variant) : []),
+          stop,
+          ...(leg2 ? leg2.vias(d2 + extra * (1 - w1), variant) : []),
+        ];
+      },
+    };
+  };
+  const two = [(2 * P) / 3, P / 3];
+  if (!ok1 || !ok2) {
+    // the stop is next to the start or the finish: all detours go on the other leg
+    const w = ok1 ? 1 : 0;
+    return [
+      make('left · 2 vias', w, 1, two),
+      make('right · 2 vias', w, -1, two),
+      make('left · 3 vias', w, 1, [(5 * P) / 6, P / 2, P / 6]),
+      make('right · 3 vias', w, -1, [(5 * P) / 6, P / 2, P / 6]),
+    ];
+  }
+  const spread = d1 / sum;
+  return [
+    ...(slight ? [make('spread left · 1 via', spread, 1, [P / 2]), make('spread right · 1 via', spread, -1, [P / 2])] : []),
+    make('spread left', spread, 1, two),
+    make('spread right', spread, -1, two),
+    make('before stop left', 1, 1, two),
+    make('before stop right', 1, -1, two),
+    make('after stop left', 0, 1, two),
+    make('after stop right', 0, -1, two),
+  ];
+}
+
+/**
+ * Removes dead-end spurs (see removeSpurs), but never the way in and out of the stop:
+ * a stop at the end of a dead-end street must still be reached.
+ */
+function clean(segments: Segment[], stop: LngLat | undefined): Segment[] {
+  if (!stop) return removeSpurs(segments);
+  const i = stopIndex(segments, stop);
+  return [...removeSpurs(segments.slice(0, i)), ...removeSpurs(segments.slice(i))];
+}
+
+/** Number of segments run before reaching the stop (the closest point on the route). */
+function stopIndex(segments: Segment[], stop: LngLat): number {
+  let best = 0;
+  let bestD = Infinity;
+  segments.forEach((s, i) => {
+    const d = haversine(s.to, stop);
+    if (d < bestD) {
+      bestD = d;
+      best = i + 1;
+    }
+  });
+  return best;
+}
+
 interface Attempt {
   size: number;
   segments: Segment[];
@@ -285,7 +364,7 @@ async function fitTemplateInner(
     try {
       const raw = await beforeDeadline(router.route([req.start, ...t.vias(size, variant), req.end], ro, signal), deadline);
       if (!raw) break; // out of time: keep the best try so far
-      segments = removeSpurs(raw.segments);
+      segments = clean(raw.segments, req.stop);
     } catch (e) {
       // enough good routes were found elsewhere: stop here
       if (stop.aborted && !req.signal?.aborted) break;
@@ -362,8 +441,13 @@ export async function planRoutes(
   ro: RouteOptions = req.prefs,
 ): Promise<PlanResult> {
   const target = req.distanceKm * 1000;
-  const crow = haversine(req.start, req.end);
-  const isLoop = crow < LOOP_THRESHOLD_M;
+  // a stop right on the start and finish changes nothing
+  const via =
+    req.stop && (haversine(req.start, req.stop) >= LOOP_THRESHOLD_M || haversine(req.stop, req.end) >= LOOP_THRESHOLD_M) ? req.stop : undefined;
+  req = { ...req, stop: via };
+  const crow = via ? haversine(req.start, via) + haversine(via, req.end) : haversine(req.start, req.end);
+  // with a stop, a loop is a route out to the stop and back another way
+  const isLoop = !via && crow < LOOP_THRESHOLD_M;
 
   // 1. Shortest route: tells us if the distance is possible, and how winding roads are here.
   let detour = 1.3;
@@ -373,7 +457,7 @@ export async function planRoutes(
   if (!isLoop) {
     let direct: Segment[];
     try {
-      direct = removeSpurs((await router.route([req.start, req.end], ro, req.signal)).segments);
+      direct = clean((await router.route(via ? [req.start, via, req.end] : [req.start, req.end], ro, req.signal)).segments, via);
     } catch (e) {
       if (e instanceof RouterError && e.noRoute) return { ok: false, reason: 'no-route', message: e.message };
       throw e;
@@ -481,7 +565,7 @@ export async function planRoutes(
     stop = new AbortController();
     const signal = stop.signal;
     await Promise.all(
-      templates(roundReq, isLoop, slight).map((t, i) =>
+      (via ? stopTemplates(roundReq, via, slight) : templates(roundReq, isLoop, slight)).map((t, i) =>
         fitTemplate(t, req, router, ro, target, initial, deadline, () => (busy = true), (e) => (failure ??= e), (segs) => consider(segs, t.label), signal, calib, i === 0, budget),
       ),
     );
@@ -604,6 +688,7 @@ function toCandidate(segments: Segment[], target: number, req: PlanRequest, labe
     deviation: dev,
     label,
     extraM: extra,
+    ...(req.stop ? { stopM: totalLength(segments.slice(0, stopIndex(segments, req.stop))) } : {}),
   };
   return { route, keys, segments };
 }

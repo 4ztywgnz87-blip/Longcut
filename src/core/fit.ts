@@ -9,7 +9,14 @@ const SEMICIRCLES = 2 ** 31 / 180;
 /** Assumed pace for the course's timestamps (Garmin needs them, e.g. for Virtual Partner). */
 const SPEED_MS = 3; // ≈ 5:33 min/km
 
-export function toFit(name: string, coords: LngLat[], elevations: (number | null)[] = []): Uint8Array {
+/** A point along the course the watch shows and warns about (e.g. the stop). */
+export interface CoursePoint {
+  /** Meters from the start. */
+  atM: number;
+  name: string;
+}
+
+export function toFit(name: string, coords: LngLat[], elevations: (number | null)[] = [], points: CoursePoint[] = []): Uint8Array {
   const enc = new Encoder();
   // the SDK's typings don't list message fields, so pass plain objects
   const put = (mesgNum: number, mesg: Record<string, unknown>) => enc.onMesg(mesgNum as never, mesg as never);
@@ -55,6 +62,20 @@ export function toFit(name: string, coords: LngLat[], elevations: (number | null
       ...(ele != null ? { altitude: ele } : {}),
     });
   });
+  for (const p of points) {
+    // the route point nearest to that distance
+    let i = dist.findIndex((d) => d >= p.atM);
+    if (i < 0) i = coords.length - 1;
+    if (i > 0 && p.atM - dist[i - 1] < dist[i] - p.atM) i--;
+    put(Profile.MesgNum.COURSE_POINT, {
+      timestamp: at(dist[i]),
+      positionLat: semi(coords[i][1]),
+      positionLong: semi(coords[i][0]),
+      distance: dist[i],
+      type: 'generic',
+      name: p.name.slice(0, 15),
+    });
+  }
   put(Profile.MesgNum.EVENT, { timestamp: end, event: 'timer', eventType: 'stopAll', eventGroup: 0 });
   return enc.close();
 }

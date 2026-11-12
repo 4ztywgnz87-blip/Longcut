@@ -67,6 +67,8 @@ export type PlanPrefs = RouteOptions;
 export interface PlanRequest {
   start: LngLat;
   end: LngLat;
+  /** Optional place to pass on the way (a stop between start and finish). */
+  stop?: LngLat;
   distanceKm: number;
   prefs: PlanPrefs;
   /** 0 for the first plan; 1, 2, … for "again" to get different routes. */
@@ -100,6 +102,8 @@ export interface PlannedRoute {
   label: string; // which template produced it, for debugging
   /** Meters of out-and-back added at the finish to reach the distance (0 = none). */
   extraM?: number;
+  /** With a stop: meters from the start to the stop. */
+  stopM?: number;
 }
 
 export type PlanResult =

@@ -32,6 +32,9 @@ export interface SavedRoute {
   unpaved?: Runs<boolean>;
   extraM?: number;
   loop?: boolean;
+  /** A place passed on the way, and how far from the start (meters). */
+  stop?: Place;
+  stopM?: number;
 }
 
 export interface Settings {

@@ -20,6 +20,8 @@ interface Props {
   active: number;
   start: LngLat | null;
   end: LngLat | null;
+  /** A place to pass on the way, if any. */
+  stop?: LngLat | null;
   /** Bottom space covered by the panel, so routes are fitted above it. */
   padding: { top: number; bottom: number; left: number; right: number };
   onReady?: (map: maplibregl.Map) => void;
@@ -36,12 +38,12 @@ function cssVar(name: string, fallback: string) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-export default function MapView({ routes, active, start, end, padding, onReady, onSelectRoute, me }: Props) {
+export default function MapView({ routes, active, start, end, stop = null, padding, onReady, onSelectRoute, me }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loaded = useRef(false);
-  const latest = useRef({ routes, active, start, end, padding });
-  latest.current = { routes, active, start, end, padding };
+  const latest = useRef({ routes, active, start, end, stop, padding });
+  latest.current = { routes, active, start, end, stop, padding };
   const selectRef = useRef(onSelectRoute);
   selectRef.current = onSelectRoute;
   const meRef = useRef(me);
@@ -91,10 +93,10 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
   // Redraw on any change. Fit the view when the routes or points change, and when the
   // panel changes size while a route or a start and finish are shown (so they stay
   // centred). With a single point the map stays put, so hiding the panel doesn't jump.
-  const twoPoints = !!start && !!end && (start[0] !== end[0] || start[1] !== end[1]);
+  const twoPoints = (!!start && !!end && (start[0] !== end[0] || start[1] !== end[1])) || (!!start && !!stop);
   const padKey = routes.length || twoPoints ? `${Math.round(padding.bottom / 20)}|${Math.round(padding.left / 20)}` : '';
   // a finish on the start (Loop) is the same view as the start alone: no refit
-  const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${twoPoints || routes.length ? end : ''}|${padKey}`;
+  const fitKey = `${routes.map((r) => r.coords.length).join(',')}|${start}|${twoPoints || routes.length ? end : ''}|${stop}|${padKey}`;
   const lastFit = useRef('');
   useEffect(() => {
     const map = mapRef.current;
@@ -102,7 +104,7 @@ export default function MapView({ routes, active, start, end, padding, onReady, 
     const refit = lastFit.current !== fitKey;
     lastFit.current = fitKey;
     draw(map, latest.current, refit);
-  }, [routes, active, start, end, fitKey]);
+  }, [routes, active, start, end, stop, fitKey]);
 
   useEffect(() => {
     if (mapRef.current && loaded.current) drawMe(mapRef.current, me ?? null);
@@ -162,6 +164,7 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
 
   const pts: Feature[] = [];
   if (s.end) pts.push({ type: 'Feature', properties: { k: 'end' }, geometry: { type: 'Point', coordinates: s.end } });
+  if (s.stop) pts.push({ type: 'Feature', properties: { k: 'stop' }, geometry: { type: 'Point', coordinates: s.stop } });
   if (s.start) pts.push({ type: 'Feature', properties: { k: 'start' }, geometry: { type: 'Point', coordinates: s.start } });
   (map.getSource('pts') as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features: pts });
 
@@ -176,9 +179,9 @@ function draw(map: maplibregl.Map, s: Omit<Props, 'onReady' | 'onSelectRoute'>, 
     left: s.padding.left * scaleX,
     right: s.padding.right * scaleX,
   };
-  const all: LngLat[] = [...s.routes.flatMap((r) => r.coords), ...(s.start ? [s.start] : []), ...(s.end ? [s.end] : [])];
+  const all: LngLat[] = [...s.routes.flatMap((r) => r.coords), ...(s.start ? [s.start] : []), ...(s.end ? [s.end] : []), ...(s.stop ? [s.stop] : [])];
   if (!all.length) return;
-  if (all.length === 1 || (s.routes.length === 0 && s.start && s.end && s.start[0] === s.end[0] && s.start[1] === s.end[1])) {
+  if (all.length === 1 || (s.routes.length === 0 && !s.stop && s.start && s.end && s.start[0] === s.end[0] && s.start[1] === s.end[1])) {
     map.easeTo({ center: all[0], zoom: Math.max(map.getZoom(), 13), padding, duration: 600 });
     return;
   }
@@ -232,10 +235,11 @@ function addOverlay(map: maplibregl.Map) {
   map.addLayer({
     id: 'pts', type: 'circle', source: 'pts',
     paint: {
-      'circle-radius': 8,
-      'circle-color': ['match', ['get', 'k'], 'start', fg, bg],
-      'circle-stroke-color': fg,
-      'circle-stroke-width': 3,
+      // the stop: a smaller dot in the route colour, ringed dark so it shows on the route line
+      'circle-radius': ['match', ['get', 'k'], 'stop', 6, 8],
+      'circle-color': ['match', ['get', 'k'], 'start', fg, 'stop', accent, bg],
+      'circle-stroke-color': ['match', ['get', 'k'], 'stop', bg, fg],
+      'circle-stroke-width': ['match', ['get', 'k'], 'stop', 2.5, 3],
     },
   });
   // your own position: blue dot with a soft accuracy circle, like Google Maps

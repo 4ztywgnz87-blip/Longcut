@@ -104,7 +104,16 @@ exports it to a Garmin watch.
    the order the server answers). `prepare()` (planService) uploads the profile and fetches
    the direct route while start/finish are being chosen, so Plan skips those waits.
    No second public BRouter server was found (Nov 2026); own server = the real fix.
-6. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
+6. **Stop** (`PlanRequest.stop`, optional): one place to pass on the way, sent as a fixed
+   waypoint in the same request (A → vias → stop → vias → B), so no extra requests. Its own
+   templates (`stopTemplates`) share the extra distance out differently: spread over both legs
+   (by leg length), all before the stop, or all after it (left/right each); the best routes win,
+   so the tabs usually put the stop at different km ("Stop at km X" per route; Dauwe asked how to
+   split, this lets him pick). A stop next to start/finish (< 250 m) puts all detours on the other
+   leg; one next to both is ignored. Loop + stop = out to the stop, back another way.
+   `clean()` removes spurs on each side of the stop separately, so a stop up a dead-end street
+   is still reached. `stopM` = meters to the stop; the FIT file gets a course point there.
+7. "New routes" = `variation + 1` (shifts the via angles). Each set is kept: results show
    "Earlier / Set n of m / Later". `PlanRequest.signal` lets the Cancel button stop a search.
 
 A dropped connection mid-search keeps the routes found so far (error only when there are
@@ -145,12 +154,15 @@ Costs: busy roads by type + `estimated_traffic_class`, `estimated_noise_class` p
   the screen. Phones only; desktop shows a left panel.
 - Map re-fits when routes/points change or the panel resizes **only if a route or both
   start and finish are set** (never with a single point → no jumping).
-- Edit panel: Start / Finish (search, current location, pick on map, favourites ★,
+- Edit panel: Start / (Stop) / Finish (search, current location, pick on map, favourites ★,
   recent places), loop toggle, distance stepper, collapsible **Options** row
   (Surface Paved/Mixed/Trail, Scenery Any/Green, Light Daylight/Lit streets; short
   one-line labels on purpose, long ones wrapped on phones). "Green" = BRouter's
   `estimated_forest_class` (forest/wood around the way; parks are not in that data).
   Tapping Finish opens search even with Loop on (choosing a place turns Loop off).
+  **Stop:** a small round + on the line between Start and Finish (under the dots) opens search
+  for a stop; the Stop row has a × that folds the row away (grid-rows transition). One stop max.
+  Map: stop = small volt dot with a dark ring. Saved routes keep `stop` + `stopM`.
 - Distance input: invalid while typing → Plan button disabled "Distance: 1–100 km".
 - Opening Options or a message scrolls the panel so the Plan button stays in view (small
   screens, Safari with its bars). `.app` uses `overflow: clip` so nothing can shift the app.
@@ -196,6 +208,8 @@ Scripts that call real services need the proxy env in this sandbox:
 - `scripts/burst.ts`: several plans back to back (speed/rate-limit check).
 - `scripts/why.ts`: debug trace of every candidate for one trip.
 - `scripts/fit-check.ts`: writes and decodes a FIT course.
+- `scripts/e2e-stop.cjs [url]`: phone flow with a stop (add, plan, export, save, remove).
+- `scripts/trace.ts` takes an optional 5th argument: a stop `lon,lat`.
 Be gentle with the public BRouter server (it rate-limits under load).
 
 Playwright: `require('playwright')` works globally; launch Chromium with
@@ -262,6 +276,7 @@ offline after one visit; cache lookups ignore `Vary`.
 ## Ideas not done yet (only if asked)
 
 Backup/restore of saved routes; time-based distance (pace × time) and run-time estimate;
-water/toilets along long routes; "not via here" (exclude a stretch); intermediate stops;
+water/toilets along long routes; "not via here" (exclude a stretch); more than one stop or
+choosing where the stop falls (km);
 drag to edit a route; wind and sunset hints; plan a week ahead; cycling profile; Dutch
 UI; share a route link; second routing server as fallback (no other public BRouter found).

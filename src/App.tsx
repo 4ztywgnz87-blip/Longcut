@@ -35,7 +35,8 @@ const splash = (window as unknown as { __longcutSplash?: Splash }).__longcutSpla
 let fitLib: Promise<typeof import('./core/fit')> | null = null;
 const loadFit = () => (fitLib ??= import('./core/fit'));
 
-type Field = 'from' | 'to';
+type Field = 'from' | 'to' | 'stop';
+const FIELD_NAME: Record<Field, string> = { from: 'start', to: 'finish', stop: 'stop' };
 type View =
   | { k: 'edit' }
   | { k: 'search'; field: Field }
@@ -54,6 +55,9 @@ interface Detail {
   lengthM: number;
   stats?: RouteStats;
   extraM?: number;
+  /** With a stop: where it is (meters from the start) and what it's called. */
+  stopM?: number;
+  stopName?: string;
 }
 
 type StatKey = 'busy' | 'unpaved' | 'twice' | 'climb';
@@ -70,14 +74,20 @@ const fmtKm = (m: number) => (m / 1000).toFixed(2);
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const samePlace = (a: LngLat, b: LngLat) => a[0] === b[0] && a[1] === b[1];
 const isLoopRoute = (s: SavedRoute) => s.loop ?? samePlace(s.from.coord, s.to.coord);
-/** "Loop · Ten Bos 4" or "Ten Bos 4 → Grote Markt" */
-const tripName = (s: SavedRoute) => (isLoopRoute(s) ? `Loop · ${s.from.name}` : `${s.from.name} → ${s.to.name}`);
+/** "Loop · Ten Bos 4", "Ten Bos 4 → Grote Markt" or "Ten Bos 4 → Bakkerij → Grote Markt" */
+const tripName = (s: SavedRoute) =>
+  isLoopRoute(s) ? `Loop · ${s.from.name}${s.stop ? ` via ${s.stop.name}` : ''}` : [s.from.name, s.stop?.name, s.to.name].filter(Boolean).join(' → ');
 
 export default function App() {
   const initial = settings.get();
   const [view, setView] = useState<View>({ k: 'edit' });
   const [from, setFrom] = useState<Place | null>(null);
   const [to, setTo] = useState<Place | null>(null);
+  // an optional place to pass on the way
+  const [stop, setStop] = useState<Place | null>(null);
+  const [stopLeaving, setStopLeaving] = useState(false);
+  // the stop the routes on screen were planned with
+  const [planStop, setPlanStop] = useState<Place | null>(null);
   const [loop, setLoop] = useState(false);
   const [km, setKm] = useState(initial.distanceKm);
   const [kmText, setKmText] = useState(String(initial.distanceKm));
@@ -254,21 +264,23 @@ export default function App() {
   // direct route are fetched in the background, so pressing Plan skips those waits.
   const fromC = from?.coord;
   const endC = end?.coord;
+  const stopC = stop?.coord;
   useEffect(() => {
     if (view.k !== 'edit') return;
-    const t = setTimeout(() => prepare(fromC ?? null, endC ?? null, { unpavedOk, preferGreen, preferLit, preferTrail }), 400);
+    const t = setTimeout(() => prepare(fromC ?? null, endC ?? null, { unpavedOk, preferGreen, preferLit, preferTrail }, stopC), 400);
     return () => clearTimeout(t);
     // only re-run when the actual places or options change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromC?.[0], fromC?.[1], endC?.[0], endC?.[1], surface, preferGreen, preferLit, view.k]);
+  }, [fromC?.[0], fromC?.[1], endC?.[0], endC?.[1], stopC?.[0], stopC?.[1], surface, preferGreen, preferLit, view.k]);
 
   /**
    * Plans routes. `more` = "New routes": keep the earlier sets so you can go back.
    * Places and distance are passed in, so a saved route can plan straight away.
    */
-  const run = async (opts: { more: boolean; variation: number; from?: Place | null; end?: Place | null; km?: number }) => {
+  const run = async (opts: { more: boolean; variation: number; from?: Place | null; end?: Place | null; stop?: Place | null; km?: number }) => {
     const start = opts.from !== undefined ? opts.from : from;
     const finish = opts.end !== undefined ? opts.end : end;
+    const via = opts.stop !== undefined ? opts.stop : stop;
     const dist = opts.km ?? km;
     setProblem(null);
     if (!start) return setProblem({ kind: 'message', text: 'Choose where you start.' });
@@ -285,6 +297,7 @@ export default function App() {
     const baseSets = opts.more && planBack.current.k === 'results' ? sets : [];
     let shownEarly = false;
     const show = (routes: PlannedRoute[], final: boolean) => {
+      setPlanStop(via);
       const next = [...baseSets, routes];
       setSets(next);
       setSetIdx(next.length - 1);
@@ -311,6 +324,7 @@ export default function App() {
       const r = await plan({
         start: start.coord,
         end: finish.coord,
+        ...(via ? { stop: via.coord } : {}),
         distanceKm: dist,
         prefs: { unpavedOk, preferGreen, preferLit, preferTrail },
         variation: opts.variation,
@@ -383,7 +397,9 @@ export default function App() {
   const doExport = async (d: Detail, finishName: string | null) => {
     const name = finishName ? `${fmtKm(d.lengthM)} km ${finishName}` : `${fmtKm(d.lengthM)} km loop`;
     const file = routeFileName(d.lengthM / 1000, finishName ?? 'loop', 'fit');
-    downloadFile(file, (await loadFit()).toFit(name, d.coords, d.elevations), FIT_TYPE);
+    // the stop is a course point: the watch shows it on the course and counts down to it
+    const points = d.stopM != null ? [{ atM: d.stopM, name: d.stopName || 'Stop' }] : [];
+    downloadFile(file, (await loadFit()).toFit(name, d.coords, d.elevations, points), FIT_TYPE);
     setExported(true);
     setToast('Route file downloaded.');
   };
@@ -407,6 +423,7 @@ export default function App() {
     const s = savedRoutes.add({
       from: named(from),
       to: named(end),
+      ...(planStop && r.stopM != null ? { stop: named(planStop), stopM: r.stopM } : {}),
       loop: !!isLoopNow,
       requestedKm: km,
       lengthM: r.stats.length,
@@ -438,8 +455,9 @@ export default function App() {
     setFrom(s.from);
     setTo(isLoop ? null : s.to);
     setLoop(isLoop);
+    setStop(s.stop ?? null);
     commitKm(s.requestedKm);
-    run({ more: false, variation: 0, from: s.from, end: isLoop ? s.from : s.to, km: s.requestedKm });
+    run({ more: false, variation: 0, from: s.from, end: isLoop ? s.from : s.to, stop: s.stop ?? null, km: s.requestedKm });
   };
 
   // --- pick on map ---------------------------------------------------------
@@ -449,6 +467,7 @@ export default function App() {
     const c = map.getCenter();
     const place = await reverseGeocode([c.lng, c.lat]);
     if (field === 'from') setFrom(place);
+    else if (field === 'stop') setStop(place);
     else {
       setTo(place);
       setLoop(false);
@@ -458,6 +477,7 @@ export default function App() {
 
   const choose = (field: Field, p: Place) => {
     if (field === 'from') setFrom(p);
+    else if (field === 'stop') setStop(p);
     else {
       setTo(p);
       setLoop(false);
@@ -470,12 +490,14 @@ export default function App() {
   let mapRoutes: MapRoute[] = [];
   let mapStart = from?.coord ?? null;
   let mapEnd = end?.coord ?? null;
+  let mapStop = stop?.coord ?? null;
   if (view.k === 'results') mapRoutes = routes;
   if (view.k === 'savedRoute') {
     const sr = view.route;
     mapRoutes = [{ coords: sr.coords, roads: sr.roads && fromRuns<RoadKind>(sr.roads), unpaved: sr.unpaved && fromRuns(sr.unpaved) }];
     mapStart = view.route.from.coord;
     mapEnd = view.route.to.coord;
+    mapStop = view.route.stop?.coord ?? null;
   }
   const pad = wide
     ? { top: 48, bottom: 48, left: sheetSize.w + 64, right: 48 }
@@ -514,6 +536,15 @@ export default function App() {
         </div>
       )}
       {info && <p className="hint stat-info">{STAT_INFO[info]}</p>}
+      {d.stopM != null && (
+        <p className="stop-note">
+          <span className="dot dot-stop" aria-hidden="true" />
+          <span>
+            Stop at <b>km {(d.stopM / 1000).toFixed(1)}</b>
+            {d.stopName ? ` · ${d.stopName}` : ''}
+          </span>
+        </p>
+      )}
       {!!d.extraM && d.extraM >= 20 && (
         <p className="hint extra-note">Includes {Math.round(d.extraM / 10) * 10} m out and back at the finish to make the distance.</p>
       )}
@@ -555,6 +586,7 @@ export default function App() {
         active={view.k === 'results' ? active : 0}
         start={view.k === 'pick' ? null : mapStart}
         end={view.k === 'pick' ? null : mapEnd}
+        stop={view.k === 'pick' ? null : mapStop}
         padding={pad}
         onReady={(m) => {
           mapRef.current = m;
@@ -597,16 +629,16 @@ export default function App() {
       {view.k === 'pick' && (
         <>
           <div className="crosshair" aria-hidden="true">
-            <span className={`dot ${view.field === 'from' ? 'dot-start' : 'dot-end'}`} />
+            <span className={`dot ${view.field === 'from' ? 'dot-start' : view.field === 'stop' ? 'dot-stop' : 'dot-end'}`} />
           </div>
           <div className="sheet pick-sheet" ref={sheet}>
-            <p className="pick-text">Move the map until the dot is on your {view.field === 'from' ? 'start' : 'finish'}.</p>
+            <p className="pick-text">Move the map until the dot is on your {FIELD_NAME[view.field]}.</p>
             <div className="row-2">
               <button type="button" className="btn ghost" onClick={() => setView({ k: 'search', field: view.field })}>
                 Cancel
               </button>
               <button type="button" className="btn primary" onClick={() => confirmPick(view.field)}>
-                Set {view.field === 'from' ? 'start' : 'finish'}
+                Set {FIELD_NAME[view.field]}
               </button>
             </div>
           </div>
@@ -615,7 +647,7 @@ export default function App() {
 
       {view.k === 'search' && (
         <PlaceSearch
-          title={view.field === 'from' ? 'Start' : 'Finish'}
+          title={view.field === 'from' ? 'Start' : view.field === 'stop' ? 'Stop' : 'Finish'}
           near={gps ?? from?.coord ?? null}
           canUseLocation={'geolocation' in navigator}
           onPick={(p) => choose(view.field, p)}
@@ -623,6 +655,7 @@ export default function App() {
             if (gps) choose(view.field, { name: 'Current location', detail: '', coord: gps });
             else {
               if (view.field === 'from') setFrom(null);
+              if (view.field === 'stop') return setToast('Location is off. Search for your stop instead.');
               locate(view.field === 'from');
               setView({ k: 'edit' });
             }
@@ -656,7 +689,8 @@ export default function App() {
           >
             <span className="dot dot-start" aria-hidden="true" />
             <span className="summary-text">
-              {from?.name ?? 'Choose start'} → {loop ? 'loop' : to?.name ?? 'choose finish'}
+              {from?.name ?? 'Choose start'} → {stop ? `${stop.name} → ` : ''}
+              {loop ? (stop ? 'back' : 'loop') : to?.name ?? 'choose finish'}
             </span>
             <span className="summary-km">{km} km</span>
           </button>
@@ -670,6 +704,44 @@ export default function App() {
                   <span className={`field-value ${from ? '' : 'empty'}`}>{from ? from.name : 'Choose start'}</span>
                 </span>
               </button>
+              {stop ? (
+                <div
+                  className={`stop-row ${stopLeaving ? 'leaving' : ''}`}
+                  onTransitionEnd={(e) => {
+                    if (stopLeaving && e.target === e.currentTarget) {
+                      setStop(null);
+                      setStopLeaving(false);
+                    }
+                  }}
+                >
+                  <div className="stop-inner">
+                    <button type="button" className="field" onClick={() => setView({ k: 'search', field: 'stop' })}>
+                      <span className="dot dot-stop" aria-hidden="true" />
+                      <span className="field-text">
+                        <span className="field-label">Stop</span>
+                        <span className="field-value">{stop.name}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="stop-remove"
+                      aria-label="Remove stop"
+                      onClick={() => {
+                        setProblem(null);
+                        // fold the row away, then drop the stop (see onTransitionEnd)
+                        if (matchMedia('(prefers-reduced-motion: reduce)').matches) setStop(null);
+                        else setStopLeaving(true);
+                      }}
+                    >
+                      <Icon name="close" size={16} />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" className="add-stop" aria-label="Add a stop" onClick={() => setView({ k: 'search', field: 'stop' })}>
+                  <Icon name="plus" size={13} />
+                </button>
+              )}
               <button
                 type="button"
                 className="field"
@@ -794,7 +866,7 @@ export default function App() {
               {problem.kind === 'too-short' ? (
                 <>
                   <p>
-                    The shortest route is already <b>{problem.shortestKm.toFixed(1)} km</b>, longer than {km} km.
+                    The shortest route{stop ? ' via your stop' : ''} is already <b>{problem.shortestKm.toFixed(1)} km</b>, longer than {km} km.
                   </p>
                   <button
                     type="button"
@@ -883,7 +955,7 @@ export default function App() {
 
           <div className="sheet-body results-body" inert={collapsed}>
             {routeBody(
-              { coords: r.coords, elevations: r.elevations, lengthM: r.stats.length, stats: r.stats, extraM: r.extraM },
+              { coords: r.coords, elevations: r.elevations, lengthM: r.stats.length, stats: r.stats, extraM: r.extraM, stopM: r.stopM, stopName: planStop?.name },
               {
                 finishName: isLoopNow || !end ? null : end.name,
                 actions: (
@@ -968,6 +1040,8 @@ export default function App() {
                 lengthM: view.route.lengthM,
                 stats: view.route.stats,
                 extraM: view.route.extraM,
+                stopM: view.route.stopM,
+                stopName: view.route.stop?.name,
               },
               {
                 title: tripName(view.route),
